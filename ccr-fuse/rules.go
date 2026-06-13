@@ -88,7 +88,7 @@ func parseRulesReader(r io.Reader) (*Rules, error) {
 		case patAnchored:
 			out.anchored[key] = true
 		case patGlob:
-			globs = append(globs, trim)
+			globs = append(globs, anchorGlobIfMidSlash(trim))
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -98,6 +98,26 @@ func parseRulesReader(r io.Reader) (*Rules, error) {
 		out.matcher = ignore.CompileIgnoreLines(globs...)
 	}
 	return out, nil
+}
+
+// anchorGlobIfMidSlash prepends "/" to glob patterns whose slash is not at the
+// start or end, to match real-git anchoring semantics. go-gitignore treats such
+// patterns as unanchored by default; we force anchoring here so behavior matches
+// the .gitignore spec.
+//
+// Patterns explicitly starting with **/ keep their unanchored deep-match intent.
+func anchorGlobIfMidSlash(p string) string {
+	if strings.HasPrefix(p, "/") {
+		return p
+	}
+	if strings.HasPrefix(p, "**/") {
+		return p
+	}
+	trimmed := strings.TrimSuffix(p, "/")
+	if strings.Contains(trimmed, "/") {
+		return "/" + p
+	}
+	return p
 }
 
 func validatePattern(p string) error {
@@ -119,19 +139,17 @@ const (
 	patGlob
 )
 
-// classify decides which fast-path bucket a pattern lives in.
+// classify decides which fast-path bucket a pattern lives in. Per the real
+// .gitignore spec, any pattern containing a non-trailing slash is anchored to
+// the root. Three buckets:
 //
-// Three buckets, matching go-gitignore behavior:
-//   * patGlob       — anything containing *, ?, or [. Compiled into the regex matcher.
-//   * patAnchored   — leading slash + bare path; check exact rel path.
-//                     (Leading '/' is the only reliable anchor; go-gitignore
-//                     does NOT treat mid-slash patterns as anchored.)
+//   * patGlob       — anything containing *, ?, or [. Compiled into the regex
+//                     matcher (with `/` prepended via anchorGlobIfMidSlash if
+//                     mid-slash, to override go-gitignore's permissive default).
+//   * patAnchored   — leading slash, OR any mid-slash, with no glob chars.
+//                     Match the exact rel path via O(1) hash lookup.
 //   * patUnanchored — single-component bare name (with optional trailing /);
 //                     match against the basename at any depth.
-//
-// Multi-component patterns without a leading slash (e.g. ".aws/credentials")
-// fall to the matcher because basename alone can't express "ends-with"
-// semantics in O(1).
 func classify(p string) (patKind, string) {
 	if strings.ContainsAny(p, "*?[") {
 		return patGlob, p
@@ -143,8 +161,8 @@ func classify(p string) (patKind, string) {
 	if !strings.Contains(trimmed, "/") {
 		return patUnanchored, trimmed
 	}
-	// Mid-slash, no leading slash: defer to matcher (it walks the regex).
-	return patGlob, p
+	// Mid-slash literal — anchored to workspace root per gitignore spec.
+	return patAnchored, trimmed
 }
 
 // Match returns true if rel (slash-separated, no leading slash, relative to workspace

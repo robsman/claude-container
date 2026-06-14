@@ -13,9 +13,9 @@ builder_memory := "8G"
 
 # ── Apple container setup ────────────────────────────────────────
 
-# Install Apple Container + jq, start system services, bring up the builder
+# Install Apple Container + jq + just, start system services, bring up the builder
 setup:
-    brew install container jq
+    brew install container jq just
     container system start
     @just builder-ensure
 

@@ -194,7 +194,10 @@ ccr logs myname                  # the verbose stream
 
 - You run as the configured user (default `coder` uid 1000), **no sudo**. System packages must be added at image-build time (edit `Dockerfile` or your per-project `.ccr/Dockerfile`, run `ccr rebuild`).
 - `/workspace` is a FUSE mount served by `ccr-fuse`. Passthrough paths reach the host bind; shadowed paths live in a container-local store.
-- Default-image tools: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`. Per-project images get whatever their base provides (plus the ccr overlay essentials).
+- Tools available depend on the image:
+  - **Default `claude-container` image**: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`.
+  - **Per-project image (`.ccr/config.yaml` with `image:` or `build:`)**: only what the base image ships, plus the ccr overlay essentials (`fuse3`, `ccr-fuse`, `ccr-init.sh`, the configured user). Even the Claude CLI is NOT present unless your base image or `.ccr/Dockerfile` installs it.
+  - **Workaround if you want default tooling + a few extras**: `FROM claude-container:latest` in your `.ccr/Dockerfile` and add what you need. The ccr overlay is layered on top regardless.
 - Auth: `ccr login` (subscription) or `ANTHROPIC_API_KEY` in a `.env` next to the Justfile.
 
 ---

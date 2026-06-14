@@ -29,11 +29,13 @@ Requires Apple Silicon + macOS 26+.
 ```bash
 git clone https://github.com/robsman/claude-container.git ~/repos/claude-container
 cd ~/repos/claude-container
-./ccr setup           # installs Apple Container + jq, starts the service
+./ccr setup           # installs Apple Container + jq, starts services + the builder VM
 ./ccr build-base      # builds the ccr-base image (small; required for any project image)
 ./ccr build           # builds the default claude-container image
 ./ccr build-host      # cross-builds the host-side ccr-fuse binary (used by `ccr lint` + project image builds)
 ```
+
+The builder VM is a long-lived Apple Container that runs all `container build` invocations. `ccr setup` brings it up at the size given by `builder_memory` in the Justfile (default 8G). To change the size later, edit the Justfile and run `ccr builder-reset` — `container build -m` does NOT renegotiate a running builder.
 
 Then put `ccr` on your `PATH` (symlink it into `/usr/local/bin` or add the repo dir to `PATH`). If you cloned somewhere other than `~/repos/claude-container`, set `CLAUDE_CONTAINER_DIR` to the actual path.
 

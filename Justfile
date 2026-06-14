@@ -4,14 +4,20 @@ image := "claude-container"
 prefix := "claude-"
 host_dir := invocation_directory()
 host_name := file_name(invocation_directory())
-build_memory := "8G"
+
+# Memory for the long-lived Apple Container builder VM. Effective only at
+# `container builder start` — once the builder is up, this is ignored.
+# Run `just builder-reset` to apply a new value. 8G is the verified minimum
+# for a full claude-container rebuild including the Claude CLI installer.
+builder_memory := "8G"
 
 # ── Apple container setup ────────────────────────────────────────
 
-# Install Apple container CLI + jq (for state detection) and start the system services
+# Install Apple Container + jq, start system services, bring up the builder
 setup:
     brew install container jq
     container system start
+    @just builder-ensure
 
 # Start container system services
 service-start:
@@ -25,29 +31,45 @@ service-stop:
 service-status:
     container system status
 
+# Ensure the builder VM is running (no-op if already up; use builder-reset to resize)
+builder-ensure:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if container list -a -q | grep -qx buildkit; then
+        state=$(container inspect buildkit | jq -r '.[0].status.state')
+        if [ "$state" != "running" ]; then
+            container builder start -m {{builder_memory}}
+        fi
+    else
+        container builder start -m {{builder_memory}}
+    fi
+
+# Delete + recreate the builder VM at the current `builder_memory` size
+builder-reset:
+    -container builder stop 2>/dev/null
+    -container builder delete 2>/dev/null
+    container builder start -m {{builder_memory}}
+
 # ── Image ─────────────────────────────────────────────────────────
 
-# Build ccr-base — minimal image holding ccr-fuse + init script + the bits
-# the ccr overlay needs. Required before `build` and before any per-project
-# image build. See ADR-0006.
-build-base:
-    container build -m {{build_memory}} \
+# Build ccr-base (minimal image with ccr-fuse + init script); see ADR-0006
+build-base: builder-ensure
+    container build \
         -f {{justfile_directory()}}/Dockerfile.base \
         -t ccr-base \
         {{justfile_directory()}}
 
-# Build the default claude-container image (ccr-base + Node/Python/R/DuckDB/
-# just/Claude CLI). Used by workspaces with no .ccr/config.yaml or .ccr/Dockerfile.
+# Build the default claude-container image (ccr-base + Node/Python/R/DuckDB/just/Claude CLI)
 build: build-base
-    container build -m {{build_memory}} -t {{image}} {{justfile_directory()}}
+    container build -t {{image}} {{justfile_directory()}}
 
 # Rebuild both ccr-base and claude-container from scratch, no cache.
-rebuild:
-    container build -m {{build_memory}} --no-cache \
+rebuild: builder-ensure
+    container build --no-cache \
         -f {{justfile_directory()}}/Dockerfile.base \
         -t ccr-base \
         {{justfile_directory()}}
-    container build -m {{build_memory}} --no-cache -t {{image}} {{justfile_directory()}}
+    container build --no-cache -t {{image}} {{justfile_directory()}}
 
 # Cross-build the host-side ccr-fuse binary (darwin/arm64), used by `ccr lint`
 build-host:

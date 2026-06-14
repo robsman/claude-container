@@ -76,10 +76,17 @@ if [ -n "${CCR_CACHE:-}" ]; then
     echo "ccr-init: fuse cache TTL = ${CCR_CACHE}s (from CCR_CACHE)" >&2
 fi
 
+DEBUG_FLAG=""
+if [ "${CCR_DEBUG:-}" = "1" ]; then
+    DEBUG_FLAG="--debug"
+    echo "ccr-init: FUSE debug logging enabled (CCR_DEBUG=1)" >&2
+fi
+
 echo "ccr-init: launching ccr-fuse" >&2
 exec /usr/local/bin/ccr-fuse \
     --backing "$BACKING" \
     --shadow "$SHADOW" \
     --mount "$MNT" \
     $RULES_FLAG \
-    $CACHE_FLAG
+    $CACHE_FLAG \
+    $DEBUG_FLAG

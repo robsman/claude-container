@@ -156,10 +156,35 @@ user: node
 ```
 The overlay validates the user exists in the base image, has uid ≠ 0, and is not listed in any sudoers file. If any check fails, the image build fails loudly. Default (no `user:` set) creates a fresh `coder` user.
 
+### Quick start from the template
+```bash
+cd ~/my-project
+cp -r ~/repos/claude-container/.ccr.example .ccr
+$EDITOR .ccr/shadow .ccr/config.yaml
+ccr claude              # first run builds the project image
+```
+
 ### Constraints
 - **Debian/Ubuntu bases only** (v1). The ccr overlay installs `fuse3` via `apt-get`, so Alpine, RHEL, Arch, distroless, etc. bases are rejected up front with a clear error pointing at ADR-0006. Good bases: `debian:bookworm-slim`, `ubuntu:24.04`, `node:*-bookworm`, `python:*-slim-bookworm`. If you need Alpine-flavored tooling today, write a Debian-based `.ccr/Dockerfile` that installs the equivalent packages via apt.
-- `.ccr/config.yaml` recognised keys: `image`, `build` (with `context`, `dockerfile`, `args`), `user`. Anything else parse-errors with line numbers — `depends_on`, `ports`, `environment`, etc. are explicitly not supported yet.
+- `.ccr/config.yaml` recognised keys: `image`, `build` (with `context`, `dockerfile`, `args`), `user`, `resources.memory`, `resources.cpus`, `fuse.cache`. Anything else parse-errors with line numbers — `depends_on`, `ports`, `environment`, etc. are explicitly not supported yet.
 - Workspaces without a `.ccr/config.yaml` and without a `.ccr/Dockerfile` use the default `claude-container` image, same as before.
+
+### Edit-config workflow
+Changes to `.ccr/config.yaml` or `.ccr/shadow` take effect at container CREATE time. To pick up edits:
+
+```bash
+ccr destroy && ccr claude     # rebuilds the project image + reapplies config
+```
+
+`ccr stop` + `ccr start` is enough only for re-reading `.ccr/shadow` rules (since ccr-fuse re-reads them at every start). Anything that affects image composition (image:, build:, user:, resources:) requires `destroy + create`.
+
+### Diagnosing FUSE issues
+Set `CCR_DEBUG=1` in the host shell when creating the container to enable verbose FUSE logging inside ccr-fuse:
+
+```bash
+CCR_DEBUG=1 ccr create myname    # forwarded into the container as -e CCR_DEBUG=1
+ccr logs myname                  # the verbose stream
+```
 
 ---
 

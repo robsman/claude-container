@@ -42,6 +42,12 @@ if [ -x "$CCR_FUSE" ] && [ -f "$CONFIG" ]; then
     fi
 fi
 
+# Forward CCR_DEBUG if set in the host shell. Lets the user diagnose a
+# specific session without baking debug into config: `CCR_DEBUG=1 ccr claude`.
+if [ "${CCR_DEBUG:-}" = "1" ]; then
+    CONTAINER_ENV="$CONTAINER_ENV -e CCR_DEBUG=1"
+fi
+
 # Emit lines for `eval`.
 printf "CREATE_FLAGS=%q\n" "$CREATE_FLAGS"
 printf "CONTAINER_ENV=%q\n" "$CONTAINER_ENV"

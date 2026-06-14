@@ -152,6 +152,17 @@ func lintConfig(path string, exitCode *int) {
 	fmt.Printf("%s: OK\n", path)
 	fmt.Printf("  image source: %s\n", source)
 	fmt.Printf("  container user: %s\n", user)
+	if cfg.Resources != nil {
+		if cfg.Resources.Memory != "" {
+			fmt.Printf("  resources.memory: %s\n", cfg.Resources.Memory)
+		}
+		if cfg.Resources.CPUs > 0 {
+			fmt.Printf("  resources.cpus: %d\n", cfg.Resources.CPUs)
+		}
+	}
+	if cfg.Fuse != nil && cfg.Fuse.Cache != nil {
+		fmt.Printf("  fuse.cache: %g\n", *cfg.Fuse.Cache)
+	}
 }
 
 func describe(e LintEntry) string {

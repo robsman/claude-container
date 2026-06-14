@@ -22,9 +22,11 @@ import (
 // optional; a fully empty config is valid and means "use the default base
 // image with the coder user".
 type ProjectConfig struct {
-	Image string     `yaml:"image,omitempty"`
-	Build *BuildSpec `yaml:"build,omitempty"`
-	User  string     `yaml:"user,omitempty"`
+	Image     string        `yaml:"image,omitempty"`
+	Build     *BuildSpec    `yaml:"build,omitempty"`
+	User      string        `yaml:"user,omitempty"`
+	Resources *ResourceSpec `yaml:"resources,omitempty"`
+	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
 }
 
 // BuildSpec holds the parameters for locally building a project image.
@@ -34,6 +36,21 @@ type BuildSpec struct {
 	Context    string            `yaml:"context,omitempty"`
 	Dockerfile string            `yaml:"dockerfile,omitempty"`
 	Args       map[string]string `yaml:"args,omitempty"`
+}
+
+// ResourceSpec maps onto `container create` resource flags.
+type ResourceSpec struct {
+	// Memory is the RAM ceiling. Apple Container size string ("4G", "512M").
+	Memory string `yaml:"memory,omitempty"`
+	// CPUs is the CPU count. Positive integer.
+	CPUs int `yaml:"cpus,omitempty"`
+}
+
+// FuseSpec maps onto ccr-fuse runtime flags.
+type FuseSpec struct {
+	// Cache is the attr/entry/negative cache TTL in seconds (ccr-fuse --cache).
+	// Pointer so we can distinguish "unset" (use default 1.0s) from "0.0".
+	Cache *float64 `yaml:"cache,omitempty"`
 }
 
 // ParseProjectConfig reads and validates .ccr/config.yaml. A missing file
@@ -83,6 +100,50 @@ func (c *ProjectConfig) Validate() error {
 		if c.Build.Dockerfile == "" {
 			return errors.New("config: build: dockerfile is required")
 		}
+	}
+	if c.Resources != nil {
+		if c.Resources.Memory != "" {
+			if err := validateMemorySize(c.Resources.Memory); err != nil {
+				return fmt.Errorf("config: resources.memory: %w", err)
+			}
+		}
+		if c.Resources.CPUs < 0 {
+			return fmt.Errorf("config: resources.cpus: must be a positive integer, got %d", c.Resources.CPUs)
+		}
+	}
+	if c.Fuse != nil && c.Fuse.Cache != nil {
+		if *c.Fuse.Cache < 0 {
+			return fmt.Errorf("config: fuse.cache: must be ≥ 0, got %g", *c.Fuse.Cache)
+		}
+	}
+	return nil
+}
+
+// validateMemorySize accepts Apple-Container-style size strings: a positive
+// integer optionally followed by a single K / M / G / T suffix. We do not
+// translate the value; Apple Container parses it.
+func validateMemorySize(s string) error {
+	if s == "" {
+		return errors.New("empty")
+	}
+	digits := s
+	suffix := ""
+	last := s[len(s)-1]
+	switch last {
+	case 'K', 'M', 'G', 'T', 'k', 'm', 'g', 't':
+		digits = s[:len(s)-1]
+		suffix = string(last)
+	}
+	if digits == "" {
+		return fmt.Errorf("missing digits before suffix %q", suffix)
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("non-digit %q in size value %q", r, s)
+		}
+	}
+	if digits == "0" {
+		return errors.New("zero is not a valid size")
 	}
 	return nil
 }

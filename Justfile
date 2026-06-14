@@ -73,6 +73,7 @@ _ensure name=host_name:
         # to the global claude-container default.
         IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
         IMAGE_TAG=${IMAGE_TAG:-{{image}}}
+        eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
         container create \
             --name {{prefix}}{{name}} \
             --cap-add SYS_ADMIN \
@@ -80,10 +81,12 @@ _ensure name=host_name:
             -l "ccr.host_path={{host_dir}}" \
             -l ccr.managed=true \
             -e ANTHROPIC_API_KEY \
+            $CONTAINER_ENV \
+            $CREATE_FLAGS \
             -v "{{host_dir}}:/workspace-real" \
             "$IMAGE_TAG" \
             /usr/local/bin/ccr-init.sh > /dev/null
-        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG)" >&2
+        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
     else
         recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["ccr.host_path"] // empty')
         if [ -n "$recorded" ] && [ "$recorded" != "{{host_dir}}" ]; then
@@ -110,6 +113,7 @@ create name=host_name *CONTAINER_ARGS:
     fi
     IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
     IMAGE_TAG=${IMAGE_TAG:-{{image}}}
+    eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
     container create \
         --name {{prefix}}{{name}} \
         --cap-add SYS_ADMIN \
@@ -117,11 +121,13 @@ create name=host_name *CONTAINER_ARGS:
         -l "ccr.host_path={{host_dir}}" \
         -l ccr.managed=true \
         -e ANTHROPIC_API_KEY \
+        $CONTAINER_ENV \
+        $CREATE_FLAGS \
         -v "{{host_dir}}:/workspace-real" \
         {{CONTAINER_ARGS}} \
         "$IMAGE_TAG" \
         /usr/local/bin/ccr-init.sh
-    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG)"
+    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
 
 # Start a stopped container
 start name=host_name:

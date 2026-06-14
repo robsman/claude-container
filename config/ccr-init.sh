@@ -70,9 +70,16 @@ else
     echo "ccr-init: no .ccr/shadow in workspace; pure passthrough" >&2
 fi
 
+CACHE_FLAG=""
+if [ -n "${CCR_CACHE:-}" ]; then
+    CACHE_FLAG="--cache $CCR_CACHE"
+    echo "ccr-init: fuse cache TTL = ${CCR_CACHE}s (from CCR_CACHE)" >&2
+fi
+
 echo "ccr-init: launching ccr-fuse" >&2
 exec /usr/local/bin/ccr-fuse \
     --backing "$BACKING" \
     --shadow "$SHADOW" \
     --mount "$MNT" \
-    $RULES_FLAG
+    $RULES_FLAG \
+    $CACHE_FLAG

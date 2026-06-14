@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // runConfig is the entrypoint for `ccr-fuse config`.
@@ -75,6 +76,22 @@ func showProjectConfig(c *ProjectConfig, path string) {
 	} else {
 		fmt.Println("build: -")
 	}
+	if c.Resources != nil {
+		fmt.Println("resources:")
+		fmt.Printf("  memory: %s\n", emptyDash(c.Resources.Memory))
+		cpus := "-"
+		if c.Resources.CPUs > 0 {
+			cpus = fmt.Sprintf("%d", c.Resources.CPUs)
+		}
+		fmt.Printf("  cpus: %s\n", cpus)
+	} else {
+		fmt.Println("resources: -")
+	}
+	if c.Fuse != nil && c.Fuse.Cache != nil {
+		fmt.Printf("fuse.cache: %s\n", strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", *c.Fuse.Cache), "0"), "."))
+	} else {
+		fmt.Println("fuse.cache: -")
+	}
 }
 
 func projectConfigField(c *ProjectConfig, name string) (string, error) {
@@ -104,6 +121,21 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "build", nil
 		}
 		return "default", nil
+	case "resources.memory":
+		if c.Resources == nil {
+			return "", nil
+		}
+		return c.Resources.Memory, nil
+	case "resources.cpus":
+		if c.Resources == nil || c.Resources.CPUs == 0 {
+			return "", nil
+		}
+		return fmt.Sprintf("%d", c.Resources.CPUs), nil
+	case "fuse.cache":
+		if c.Fuse == nil || c.Fuse.Cache == nil {
+			return "", nil
+		}
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", *c.Fuse.Cache), "0"), "."), nil
 	}
 	return "", fmt.Errorf("unknown field %q", name)
 }

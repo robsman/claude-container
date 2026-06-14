@@ -186,6 +186,103 @@ func TestParseProjectConfig_MissingFile(t *testing.T) {
 	}
 }
 
+func TestParseProjectConfig_Resources(t *testing.T) {
+	src := `image: debian:bookworm-slim
+resources:
+  memory: 4G
+  cpus: 2
+`
+	cfg, err := parseProjectConfigBytes([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resources == nil {
+		t.Fatal("Resources is nil")
+	}
+	if cfg.Resources.Memory != "4G" {
+		t.Errorf("memory = %q", cfg.Resources.Memory)
+	}
+	if cfg.Resources.CPUs != 2 {
+		t.Errorf("cpus = %d", cfg.Resources.CPUs)
+	}
+}
+
+func TestParseProjectConfig_FuseCache(t *testing.T) {
+	src := `image: debian:bookworm-slim
+fuse:
+  cache: 0.5
+`
+	cfg, err := parseProjectConfigBytes([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Fuse == nil || cfg.Fuse.Cache == nil {
+		t.Fatal("Fuse.Cache is nil")
+	}
+	if *cfg.Fuse.Cache != 0.5 {
+		t.Errorf("cache = %f", *cfg.Fuse.Cache)
+	}
+}
+
+func TestParseProjectConfig_FuseCacheZero(t *testing.T) {
+	// Zero is valid (=disable caching). Tests that the *float64 pointer
+	// correctly distinguishes "unset" from "explicit zero".
+	src := "fuse:\n  cache: 0\n"
+	cfg, err := parseProjectConfigBytes([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Fuse == nil || cfg.Fuse.Cache == nil {
+		t.Fatal("Cache is nil; zero should still set it")
+	}
+	if *cfg.Fuse.Cache != 0.0 {
+		t.Errorf("cache = %f, want 0.0", *cfg.Fuse.Cache)
+	}
+}
+
+func TestParseProjectConfig_RejectBadMemory(t *testing.T) {
+	cases := []string{
+		"resources:\n  memory: abc\n",
+		"resources:\n  memory: 0G\n",
+		"resources:\n  memory: 4XB\n",
+	}
+	for _, src := range cases {
+		_, err := parseProjectConfigBytes([]byte(src))
+		if err == nil || !strings.Contains(err.Error(), "resources.memory") {
+			t.Errorf("expected memory rejection for %q, got %v", src, err)
+		}
+	}
+}
+
+func TestParseProjectConfig_RejectNegativeCPUs(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("resources:\n  cpus: -1\n"))
+	if err == nil || !strings.Contains(err.Error(), "resources.cpus") {
+		t.Errorf("expected cpus rejection, got %v", err)
+	}
+}
+
+func TestParseProjectConfig_RejectNegativeCache(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("fuse:\n  cache: -0.5\n"))
+	if err == nil || !strings.Contains(err.Error(), "fuse.cache") {
+		t.Errorf("expected cache rejection, got %v", err)
+	}
+}
+
+func TestValidateMemorySize(t *testing.T) {
+	good := []string{"1", "100", "512M", "4G", "16g", "2T", "1024K"}
+	for _, s := range good {
+		if err := validateMemorySize(s); err != nil {
+			t.Errorf("expected %q to be valid, got %v", s, err)
+		}
+	}
+	bad := []string{"", "abc", "0", "0G", "4XB", "4.5G", " 4G", "G"}
+	for _, s := range bad {
+		if err := validateMemorySize(s); err == nil {
+			t.Errorf("expected %q to be invalid", s)
+		}
+	}
+}
+
 func TestParseProjectConfig_FromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

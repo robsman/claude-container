@@ -36,6 +36,25 @@
 #
 # user: node
 
+# ── Container resources ────────────────────────────────────────────
+# Forwarded to `container create` as --memory / --cpus. Missing keys =
+# whatever Apple Container picks as default. memory accepts the same size
+# strings Apple Container does: integer + optional K/M/G/T suffix
+# (e.g. 512M, 4G, 16g, 2048K). cpus must be a positive integer.
+#
+# resources:
+#   memory: 4G
+#   cpus: 2
+
+# ── ccr-fuse runtime tuning ────────────────────────────────────────
+# Cache TTL for the FUSE attr/entry/negative cache, in seconds. Default 1.0.
+# Lower values pick up host-side edits faster but increase FUSE syscall
+# overhead. Raising it speeds large dir walks (e.g. claude indexing) at the
+# cost of slightly stale views.
+#
+# fuse:
+#   cache: 1.0
+
 # ── Constraints (v1) ───────────────────────────────────────────────
 # - Base image must be Debian/Ubuntu-derived. ccr probes for /etc/debian_version
 #   before building the overlay; Alpine, RHEL, Arch, distroless bases are

@@ -1,0 +1,44 @@
+# Example .ccr/config.yaml
+#
+# Copy this to your project's `.ccr/config.yaml` to customize the container
+# image. Both `image:` and `build:` are optional; an empty/missing file means
+# "use the default claude-container image" (Node 22 + Python+uv + R + DuckDB +
+# Claude CLI). See docs/adr/0006-per-project-images-with-ccr-overlay.md for
+# the full design.
+#
+# Pick ONE of `image:` or `build:`. Setting both is a config error.
+
+# ── Option 1: pull a pre-built image ───────────────────────────────
+# image: python:3.12-slim-bookworm
+# image: ghcr.io/your-org/devtools:v1.4
+
+# ── Option 2: build locally from a Dockerfile ─────────────────────
+# `context` defaults to `.` (= the .ccr/ directory), so by default
+# only files inside .ccr/ are available to COPY. Set `context: ..` to
+# use the workspace root as build context.
+#
+# build:
+#   context: .                    # relative to .ccr/
+#   dockerfile: Dockerfile        # relative to context
+#   args:
+#     NODE_VERSION: "22"
+
+# ── Option 3: shortcut ─────────────────────────────────────────────
+# If you only need to build a custom Dockerfile, drop it at .ccr/Dockerfile
+# and skip this config file entirely. ccr will detect it automatically.
+
+# ── Container user ─────────────────────────────────────────────────
+# Defaults to `coder` (uid 1000, created by the ccr overlay if missing).
+# Set to adopt a user that the base image already established (e.g. node:22
+# uses `node`, python images often use `app`). The overlay verifies the user
+# exists, has uid != 0, and is not in any sudoers file — build fails if any
+# check fails.
+#
+# user: node
+
+# ── Constraints (v1) ───────────────────────────────────────────────
+# - Base image must be Debian/Ubuntu-derived (the ccr overlay installs fuse3
+#   via apt). Alpine bases are not supported yet.
+# - Only the keys above are honored. Anything else (services, depends_on,
+#   ports, environment, volumes, ...) raises a parse error with a line
+#   number. Run `ccr lint` inside your workspace to validate this file.

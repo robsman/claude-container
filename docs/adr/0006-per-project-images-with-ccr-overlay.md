@@ -35,3 +35,11 @@ Some base images establish their own conventional user (`node:22` → `node`, et
 ## Hard switch on migration
 
 No backwards compatibility with the pre-overlay design. Existing in-development containers must be `ccr destroy`'d; `.ccrshadow` files moved to `.ccr/shadow`; no users are on the legacy layout in production. We pay the rename cost once, up front.
+
+## Debian/Ubuntu-only bases (v1 constraint)
+
+The ccr overlay installs `fuse3` via `apt-get`. Alpine, RHEL, Arch, distroless, and other non-Debian bases will fail the overlay build. To surface this as a friendly error rather than a cryptic `apt-get: not found`, `scripts/build-project-image.sh` probes the source image with `[ -f /etc/debian_version ]` before composing the overlay; non-matching images are rejected with a message pointing at this ADR.
+
+Widening to Alpine (apk) and RHEL-like (dnf/yum) bases is straightforward — detect the package manager and branch in the overlay template — but adds an extra dimension of bases to test against. Deferred until there is concrete demand.
+
+If you need an Alpine-flavored toolchain today, write a Debian-based `.ccr/Dockerfile` that installs the equivalent tools via apt.

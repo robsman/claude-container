@@ -82,6 +82,24 @@ case "$SOURCE" in
         ;;
 esac
 
+# Step 1.5: refuse non-Debian/Ubuntu bases up front. The overlay installs
+# fuse3 via apt; Alpine, RHEL, Arch, distroless etc. are not supported in v1.
+# Probing with an ephemeral container costs a few seconds but yields a clearer
+# error than `apt-get: not found` deep inside the overlay build.
+if ! container run --rm "$SOURCE_REF" sh -c '[ -f /etc/debian_version ]' >/dev/null 2>&1; then
+    cat >&2 <<MSG
+build-project-image: base image '$SOURCE_REF' is not Debian/Ubuntu-derived.
+
+ccr's v1 overlay installs fuse3 via apt-get. Alpine, RHEL, Arch, distroless,
+etc. bases are not supported yet. Use a Debian-based image
+(debian:bookworm-slim, ubuntu:24.04, node:*-bookworm, python:*-slim-bookworm).
+
+See docs/adr/0006-per-project-images-with-ccr-overlay.md for the restriction
+and the path to widening it.
+MSG
+    exit 1
+fi
+
 # Step 2: generate overlay Dockerfile and build it.
 OVERLAY_CTX=$(mktemp -d)
 OVERLAY_DOCKERFILE="$OVERLAY_CTX/Dockerfile"

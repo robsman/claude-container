@@ -157,7 +157,7 @@ user: node
 The overlay validates the user exists in the base image, has uid ≠ 0, and is not listed in any sudoers file. If any check fails, the image build fails loudly. Default (no `user:` set) creates a fresh `coder` user.
 
 ### Constraints
-- Base image must be Debian/Ubuntu-derived (the overlay installs `fuse3` via apt). Alpine bases need a v2 with apk support — not in the v1 surface.
+- **Debian/Ubuntu bases only** (v1). The ccr overlay installs `fuse3` via `apt-get`, so Alpine, RHEL, Arch, distroless, etc. bases are rejected up front with a clear error pointing at ADR-0006. Good bases: `debian:bookworm-slim`, `ubuntu:24.04`, `node:*-bookworm`, `python:*-slim-bookworm`. If you need Alpine-flavored tooling today, write a Debian-based `.ccr/Dockerfile` that installs the equivalent packages via apt.
 - `.ccr/config.yaml` recognised keys: `image`, `build` (with `context`, `dockerfile`, `args`), `user`. Anything else parse-errors with line numbers — `depends_on`, `ports`, `environment`, etc. are explicitly not supported yet.
 - Workspaces without a `.ccr/config.yaml` and without a `.ccr/Dockerfile` use the default `claude-container` image, same as before.
 

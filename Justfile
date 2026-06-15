@@ -96,6 +96,10 @@ build-host:
         go build -o /src/rp-fuse-darwin-arm64 -ldflags "-s -w" .
     @echo "Built {{justfile_directory()}}/rp-fuse/rp-fuse-darwin-arm64"
 
+# Run the host-side shell integration tests (profile loader, lint, env-forwarding)
+test-host: build-host
+    bash {{justfile_directory()}}/rp-fuse/tests/run-host-tests.sh
+
 # ── Container lifecycle ───────────────────────────────────────────
 
 # Internal: auto-create container if missing (bound to cwd), else verify its

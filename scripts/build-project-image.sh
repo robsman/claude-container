@@ -221,6 +221,12 @@ done <<<"$FILES_LINES"
 
 cat <<EOF
 
+# Most agent installers (claude.ai, opencode.ai) drop their binary into
+# \$HOME/.local/bin. Make sure that's on PATH for every container exec; the
+# default Dockerfile sets this for the robo-pen-default image, but overlays
+# applied to arbitrary user images need an explicit ENV here too.
+ENV PATH=/home/$RP_USER/.local/bin:\$PATH
+
 # Run the profile's install.sh as the container user.
 USER $RP_USER
 COPY --chown=$RP_USER:$RP_USER agent/install.sh /tmp/agent-install.sh

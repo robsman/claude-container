@@ -1,0 +1,20 @@
+name: opencode
+description: sst/opencode TUI — multi-provider coding agent
+# OpenCode reads provider auth from a handful of env vars; declare the ones
+# the user is likely to have. Unset ones are skipped at create time; rp lint
+# reports them as INFO so the user can confirm.
+env:
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - GROQ_API_KEY
+  - GOOGLE_GENERATIVE_AI_API_KEY
+  - OPENROUTER_API_KEY
+# OpenCode reads its workspace-level config from $XDG_CONFIG_HOME/opencode/
+# inside the container. Drop a defaults file here if you want one baked in.
+# files: []
+instructions_dst: /home/{{user}}/.config/opencode/AGENTS.md
+# Entrypoints default to sibling filenames (install.sh, run.sh, run-gated.sh,
+# login.sh). OpenCode has no permission-prompted mode of its own — leave
+# run-gated.sh out and rp lint will WARN that the profile is bypass-only.
+# OpenCode has no separate login flow either (auth is env-var driven), so
+# login.sh is also omitted; `rp login` will error with a clear message.

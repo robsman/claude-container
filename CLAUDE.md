@@ -67,7 +67,7 @@ config/
   rp-init.sh            — baked into the image at /usr/local/bin/rp-init.sh; PID 1; execs rp-fuse
 .env.example            — template for ANTHROPIC_API_KEY (also forwarded based on profile manifest's env: list)
 .rp.example/            — template for .rp/ (config.yaml + shadow)
-docs/adr/               — design decisions (ADR-0001..0006, plus 0007 in Phase F)
+docs/adr/               — design decisions (ADR-0001..0007)
 ```
 
 **Key design points:**

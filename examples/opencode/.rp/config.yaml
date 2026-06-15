@@ -1,0 +1,6 @@
+# Example workspace config that selects the opencode agent. The matching
+# profile bundle lives next door at .rp/agents/opencode/. The lookup order
+# is workspace-first (.rp/agents/opencode/) → builtin (agent.profiles/opencode/).
+# Since the repo has no builtin opencode profile, only the workspace version
+# is found — exactly how a user would ship their own agent.
+agent: opencode

@@ -1,0 +1,66 @@
+#!/usr/bin/env zsh
+# rp — robo-pen wrapper
+# Runs robo-pen just recipes from anywhere; the caller's cwd is the workspace.
+
+set -euo pipefail
+
+# Set this to wherever you cloned robo-pen, or override with the environment
+# variable ROBO_PEN_DIR.
+ROBO_PEN_DIR="${ROBO_PEN_DIR:-$HOME/repos/robo-pen}"
+
+if [[ ! -f "$ROBO_PEN_DIR/Justfile" ]]; then
+    echo "Error: robo-pen not found at $ROBO_PEN_DIR" >&2
+    echo "Set ROBO_PEN_DIR to the correct path." >&2
+    exit 1
+fi
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: rp <recipe> [args...]"
+    echo ""
+    echo "Examples (cwd-anchored — container name = rp-<agent>-<basename of \$PWD>):"
+    echo "  cd ~/my-repo && rp run           Auto-create/start container, run the agent"
+    echo "  rp run --gated                   Run the agent in permission-gated mode"
+    echo "  rp shell                         Open a shell into the cwd container"
+    echo "  rp login                         Run the agent's login flow"
+    echo "  rp destroy                       Remove the cwd container"
+    echo ""
+    echo "Explicit name overrides the cwd-based default:"
+    echo "  rp build                         Build the default base image"
+    echo "  rp create my-project             Create a container for my-project"
+    echo "  rp run my-project \"prompt\"       Run the agent with a prompt"
+    echo "  rp list                          List all rp-managed containers"
+    echo "  rp stats                         Show resource usage"
+    echo "  rp lint                          Validate .rp/{shadow,config.yaml,agents/}"
+    echo ""
+    echo "Run 'rp --recipes' to see all available recipes."
+    exit 0
+fi
+
+if [[ "$1" == "--recipes" ]]; then
+    just --justfile "$ROBO_PEN_DIR/Justfile" --list
+    exit 0
+fi
+
+# `rp lint` runs the host-side rp-fuse binary against the .rp/* in the
+# caller's cwd. No container start required.
+if [[ "$1" == "lint" ]]; then
+    shift
+    HOST_BIN="$ROBO_PEN_DIR/rp-fuse/rp-fuse-darwin-arm64"
+    if [[ ! -x "$HOST_BIN" ]]; then
+        echo "rp lint: host binary missing at $HOST_BIN" >&2
+        echo "Run 'rp build-host' to cross-build it (one-time setup)." >&2
+        exit 1
+    fi
+    # Pass --repo-dir so lint can resolve the agent profile bundle (built-ins
+    # live under $ROBO_PEN_DIR/agent.profiles/). Skipped if the user already
+    # supplied --repo-dir or an explicit shadow path.
+    if ! printf '%s\n' "$@" | grep -q -e '--repo-dir'; then
+        set -- --repo-dir "$ROBO_PEN_DIR" "$@"
+    fi
+    exec "$HOST_BIN" lint "$@"
+fi
+
+# Note: --working-directory is intentionally NOT set, so that just's
+# `invocation_directory()` returns the caller's actual cwd, enabling
+# cwd-anchored container mounts.
+exec just --justfile "$ROBO_PEN_DIR/Justfile" "$@"

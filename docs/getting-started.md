@@ -57,19 +57,19 @@ A **Justfile** is like a recipe book for your terminal. Instead of remembering l
 
 **`just`** is the program that reads the Justfile and runs the recipes. It's similar to `make` if you've heard of that, but simpler.
 
-In day-to-day use you'll invoke recipes through the **`ccr`** wrapper rather than calling `just` directly — `ccr` lets you run recipes from any folder and treats your current directory as the project root.
+In day-to-day use you'll invoke recipes through the **`rp`** wrapper rather than calling `just` directly — `rp` lets you run recipes from any folder and treats your current directory as the project root.
 
 ### Bind Mounts (The Shared Folder)
 
-This tool uses a **cwd-anchored** model: the folder you are currently `cd`'d into when you run `ccr` becomes the container's `/workspace`. Any file you put in either location instantly appears in the other.
+This tool uses a **cwd-anchored** model: the folder you are currently `cd`'d into when you run `rp` becomes the container's `/workspace`. Any file you put in either location instantly appears in the other.
 
-For example, if you `cd ~/my-research-project` and run `ccr claude`, the folder `~/my-research-project` on your Mac is mounted as `/workspace` inside the container. There is no separate "projects" directory you have to copy your work into — you just `cd` to any existing folder on your Mac and start working.
+For example, if you `cd ~/my-research-project` and run `rp claude`, the folder `~/my-research-project` on your Mac is mounted as `/workspace` inside the container. There is no separate "projects" directory you have to copy your work into — you just `cd` to any existing folder on your Mac and start working.
 
 This is how your work survives even if the container is destroyed. The container is disposable; your project folder on your Mac is permanent.
 
-**Collision safety.** Each container records the host folder it was created from in a label (`rp.host_path=...`). When you run `ccr claude` or `ccr shell`, the tool checks that the container's recorded path matches your current working directory. If they don't match, it aborts with a clear error and suggests using an explicit name (see below) — this prevents you from accidentally opening a container that was built around a different folder.
+**Collision safety.** Each container records the host folder it was created from in a label (`rp.host_path=...`). When you run `rp claude` or `rp shell`, the tool checks that the container's recorded path matches your current working directory. If they don't match, it aborts with a clear error and suggests using an explicit name (see below) — this prevents you from accidentally opening a container that was built around a different folder.
 
-**Explicit names.** By default the container is named after the current folder (e.g., `cd ~/my-project && ccr claude` creates `claude-my-project`). You can override this by passing a name explicitly: `ccr claude my-custom-name`. Use explicit names when you want multiple containers per folder, or when two different folders happen to share a basename.
+**Explicit names.** By default the container is named after the current folder (e.g., `cd ~/my-project && rp claude` creates `claude-my-project`). You can override this by passing a name explicitly: `rp claude my-custom-name`. Use explicit names when you want multiple containers per folder, or when two different folders happen to share a basename.
 
 ### YOLO Mode
 
@@ -81,7 +81,7 @@ Claude Code normally asks your permission before doing anything significant — 
 
 There are two ways to use Claude Code:
 
-1. **Claude subscription** (Pro or Max plan at [claude.ai](https://claude.ai)) — You log in once per container with `ccr login` (run from the project folder). Claude Code usage is included in your subscription. This is the simplest option.
+1. **Claude subscription** (Pro or Max plan at [claude.ai](https://claude.ai)) — You log in once per container with `rp login` (run from the project folder). Claude Code usage is included in your subscription. This is the simplest option.
 
 2. **API key** — You get a key from [console.anthropic.com](https://console.anthropic.com/) and put it in a `.env` file. Usage is billed per conversation. The key looks something like `sk-ant-abc123...`.
 
@@ -116,8 +116,8 @@ There are two ways to use Claude Code:
 Open Terminal and run:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-container.git
-cd claude-container
+git clone https://github.com/YOUR_USERNAME/robo-pen-default.git
+cd robo-pen-default
 ```
 
 Replace `YOUR_USERNAME` with the actual GitHub username or organization where this repository (repo) is hosted.
@@ -126,34 +126,34 @@ Replace `YOUR_USERNAME` with the actual GitHub username or organization where th
 >
 > **Alternative if you don't want to use git:** Download the project as a ZIP file from the GitHub page (look for a green "Code" button, then "Download ZIP"), unzip it, and open Terminal in that folder.
 
-You are now "inside" the project folder. The setup and build commands below are run from here, but day-to-day work uses `ccr` from any folder on your Mac (see the next tip).
+You are now "inside" the project folder. The setup and build commands below are run from here, but day-to-day work uses `rp` from any folder on your Mac (see the next tip).
 
-### Install `ccr` (recommended)
+### Install `rp` (recommended)
 
-The repo includes a small script called `ccr` (Claude Container Runner) that lets you run any recipe from any folder. This is the recommended way to use the tool — the cwd-anchored workflow described later in this guide depends on it.
+The repo includes a small script called `rp` (Claude Container Runner) that lets you run any recipe from any folder. This is the recommended way to use the tool — the cwd-anchored workflow described later in this guide depends on it.
 
 ```bash
 # Copy the script to a folder on your PATH
-cp ccr ~/bin/ccr       # or /usr/local/bin/ccr
-chmod +x ~/bin/ccr
+cp rp ~/bin/rp       # or /usr/local/bin/rp
+chmod +x ~/bin/rp
 ```
 
-If you cloned this repo somewhere other than `~/repos/claude-container`, tell `ccr` where to find it by adding this line to your `~/.zshrc`:
+If you cloned this repo somewhere other than `~/repos/robo-pen-default`, tell `rp` where to find it by adding this line to your `~/.zshrc`:
 
 ```bash
-export CLAUDE_CONTAINER_DIR="$HOME/path/to/claude-container"
+export ROBO_PEN_DIR="$HOME/path/to/robo-pen-default"
 ```
 
 Then, from any folder on your system:
 
 ```bash
-ccr claude              # Use the current folder as /workspace
-ccr shell               # Open a shell, mounting the current folder
-ccr list                # Show all claude containers
-ccr --recipes           # Show all available recipes
+rp claude              # Use the current folder as /workspace
+rp shell               # Open a shell, mounting the current folder
+rp list                # Show all claude containers
+rp --recipes           # Show all available recipes
 ```
 
-Under the hood, `ccr` just calls `just` with your current directory preserved, so `ccr claude` is equivalent to `just claude` run from the same folder. Examples in the rest of this guide use `ccr`; you can substitute `just` (from inside the `claude-container` directory) if you prefer.
+Under the hood, `rp` just calls `just` with your current directory preserved, so `rp claude` is equivalent to `just claude` run from the same folder. Examples in the rest of this guide use `rp`; you can substitute `just` (from inside the `robo-pen-default` directory) if you prefer.
 
 ### Step 2: Set up authentication
 
@@ -192,7 +192,7 @@ This file is private — it's listed in `.gitignore` (a special file that tells 
 ### Step 3: Install Apple Container
 
 ```bash
-ccr setup
+rp setup
 ```
 
 **What this does:**
@@ -207,7 +207,7 @@ This step typically takes 1-2 minutes the first time on a fast internet connecti
 ### Step 4: Build the container image
 
 ```bash
-ccr build
+rp build
 ```
 
 **What this does:** Apple Container reads the `Dockerfile` (the blueprint) and builds an image — a snapshot of a Linux system with all the tools pre-installed. This includes:
@@ -225,7 +225,7 @@ The first build downloads a lot and takes several minutes. Future builds are muc
 
 ## Your First Project
 
-The typical flow is: `cd` to a folder you want to work in, then run `ccr claude`. The container is created automatically on first use, and the folder you're in becomes the container's `/workspace`.
+The typical flow is: `cd` to a folder you want to work in, then run `rp claude`. The container is created automatically on first use, and the folder you're in becomes the container's `/workspace`.
 
 ### Go to (or create) a project folder
 
@@ -245,7 +245,7 @@ cd ~/research/my-first-project
 If you use a Claude Pro or Max subscription, log in once per container:
 
 ```bash
-ccr login
+rp login
 ```
 
 **What this does:** Auto-creates a container for the current folder (if one doesn't already exist), then runs `claude login` inside it. It will display a URL — open that URL in your browser, sign in with your Claude account, and the container will be authenticated. You only need to do this once per container (it survives stop/start, but not destroy/create).
@@ -257,7 +257,7 @@ API key users can skip this step — your key was already configured via `.env`.
 ### Start Claude
 
 ```bash
-ccr claude
+rp claude
 ```
 
 **What this does:**
@@ -289,7 +289,7 @@ The `ls` command means "list" — it shows the files in the current folder. You'
 From the same project folder:
 
 ```bash
-ccr shell
+rp shell
 ```
 
 This gives you a regular Linux command line inside the container, with your folder mounted at `/workspace`. You can explore, run scripts, install packages, or do anything you'd do on a Linux machine. Type `exit` to leave.
@@ -299,8 +299,8 @@ This gives you a regular Linux command line inside the container, with your fold
 If you want a second container for the same folder (say, one for experiments and one for "real" work), or two different folders happen to share the same basename, pass an explicit name:
 
 ```bash
-ccr claude experiments
-ccr claude real-work
+rp claude experiments
+rp claude real-work
 ```
 
 The folder you're in is still what gets mounted — only the container's name changes.
@@ -317,8 +317,8 @@ You have two ways to run Claude:
 
 | Command | Mode | When to Use |
 |---------|------|-------------|
-| `ccr claude` | YOLO | Day-to-day work. Claude acts autonomously. |
-| `ccr claude-safe` | Safe | When you want to approve each action Claude takes. |
+| `rp claude` | YOLO | Day-to-day work. Claude acts autonomously. |
+| `rp claude-safe` | Safe | When you want to approve each action Claude takes. |
 
 YOLO mode is the default and recommended mode inside containers. Since the container is isolated, there's no risk to your real computer.
 
@@ -328,13 +328,13 @@ You can pass a prompt directly:
 
 ```bash
 cd ~/research/my-project
-ccr claude "Read the CSV files in this directory and create summary statistics"
+rp claude "Read the CSV files in this directory and create summary statistics"
 ```
 
 Or start an interactive session (no prompt) and type your request:
 
 ```bash
-ccr claude
+rp claude
 ```
 
 ### What Claude can do inside the container
@@ -353,7 +353,7 @@ Claude has access to everything a regular Linux user would:
 
 ## Managing Your Containers
 
-Most of these recipes default to "the container for the current folder" — so `cd` to the project folder first, then run them. You can also pass an explicit container name if you prefer (e.g., `ccr stop my-project`).
+Most of these recipes default to "the container for the current folder" — so `cd` to the project folder first, then run them. You can also pass an explicit container name if you prefer (e.g., `rp stop my-project`).
 
 ### Day-to-day workflow
 
@@ -362,22 +362,22 @@ Most of these recipes default to "the container for the current folder" — so `
 cd ~/research/my-project
 
 # Start your work session (auto-creates and auto-starts the container)
-ccr claude
+rp claude
 
 # ... work with Claude ...
 
 # When done for the day, stop the container to free resources
-ccr stop
+rp stop
 
 # Next day, just run claude again from the same folder — it auto-starts
 cd ~/research/my-project
-ccr claude
+rp claude
 ```
 
 ### See all your containers
 
 ```bash
-ccr list
+rp list
 ```
 
 This shows every claude container, whether it's running or stopped, along with the host folder each one is bound to.
@@ -385,8 +385,8 @@ This shows every claude container, whether it's running or stopped, along with t
 ### Stop a container (pause it)
 
 ```bash
-ccr stop                # the container for the current folder
-ccr stop my-project     # or by explicit name
+rp stop                # the container for the current folder
+rp stop my-project     # or by explicit name
 ```
 
 Everything on disk is preserved — installed packages, configuration files, and any files Claude created. It just stops using CPU and memory. Note: any scripts or processes that were actively running will be terminated and would need to be restarted.
@@ -394,30 +394,30 @@ Everything on disk is preserved — installed packages, configuration files, and
 ### Start it again
 
 ```bash
-ccr start
+rp start
 ```
 
-Or just run `ccr claude` or `ccr shell` from the project folder — they auto-start.
+Or just run `rp claude` or `rp shell` from the project folder — they auto-start.
 
 ### Restart (if something is stuck)
 
 ```bash
-ccr restart
+rp restart
 ```
 
 ### Destroy a container (delete the virtual machine, keep your files)
 
 ```bash
-ccr destroy
+rp destroy
 ```
 
 This removes the container entirely. Any packages Claude installed, any configuration changes inside the container — gone. **But your project files on your Mac are safe.** They live on your Mac, not inside the container.
 
-You can recreate the container anytime — just `cd` back into the folder and run `ccr claude`. The container is auto-created on first use:
+You can recreate the container anytime — just `cd` back into the folder and run `rp claude`. The container is auto-created on first use:
 
 ```bash
 cd ~/research/my-project
-ccr claude
+rp claude
 ```
 
 Claude will need to reinstall any packages it needs, but your files are all still there.
@@ -425,7 +425,7 @@ Claude will need to reinstall any packages it needs, but your files are all stil
 ### Check resource usage
 
 ```bash
-ccr stats
+rp stats
 ```
 
 Shows CPU and memory usage for all running containers. Useful if your Mac feels sluggish.
@@ -433,7 +433,7 @@ Shows CPU and memory usage for all running containers. Useful if your Mac feels 
 ### View container logs
 
 ```bash
-ccr logs
+rp logs
 ```
 
 Shows the internal log output from the container. Mostly useful for debugging.
@@ -455,10 +455,10 @@ Sometimes you need to move files to/from places other than `/workspace` (for exa
 
 ```bash
 # Copy a file from your Mac into the container
-ccr cp-to ./local-file.txt /home/coder/file.txt
+rp cp-to ./local-file.txt /home/coder/file.txt
 
 # Copy a file from the container to your Mac
-ccr cp-from /home/coder/.bashrc ./container-bashrc.txt
+rp cp-from /home/coder/.bashrc ./container-bashrc.txt
 ```
 
 ### Advanced: Extra mounts at creation time
@@ -468,7 +468,7 @@ ccr cp-from /home/coder/.bashrc ./container-bashrc.txt
 If you have a large dataset somewhere else on your Mac that you don't want to copy in, you can mount it as a second shared folder when the container is first created. The `--` tells `just` that everything after it is extra options to pass to the `container` CLI. Run this from the project folder you want as `/workspace`:
 
 ```bash
-ccr create -- -v /Users/you/datasets:/data:ro
+rp create -- -v /Users/you/datasets:/data:ro
 ```
 
 Breaking down `-v /Users/you/datasets:/data:ro`:
@@ -482,7 +482,7 @@ The `container` CLI supports the familiar `-v host:container[:ro]` shorthand, wh
 
 ## Use Cases for Academic Research
 
-> **Before each example:** Every use case below assumes you have `cd`'d into the project folder you want Claude to work in. The container is auto-created on first use of `ccr claude`, named after the current folder. See [Your First Project](#your-first-project) above.
+> **Before each example:** Every use case below assumes you have `cd`'d into the project folder you want Claude to work in. The container is auto-created on first use of `rp claude`, named after the current folder. See [Your First Project](#your-first-project) above.
 
 ### 1. Data Analysis and Exploration
 
@@ -499,7 +499,7 @@ cd ~/research/data-analysis
 cp -r ~/Downloads/experiment_data/ .
 
 # Ask Claude to explore it (container auto-created on first run)
-ccr claude "Explore the CSV files in this directory. \
+rp claude "Explore the CSV files in this directory. \
   Summarize the structure, look for missing values, create basic \
   descriptive statistics, and generate visualizations."
 ```
@@ -512,7 +512,7 @@ Claude will write Python or R scripts, run them, and produce charts and summarie
 
 ```bash
 cd ~/research/stats-project
-ccr claude "I have a dataset in data.csv with columns: \
+rp claude "I have a dataset in data.csv with columns: \
   participant_id, condition (A/B/C), reaction_time, accuracy, age, gender. \
   Run a mixed-effects model predicting reaction_time from condition, \
   controlling for age and gender, with random intercepts for participant. \
@@ -527,7 +527,7 @@ Claude installs the necessary R packages, writes the analysis script, runs it, a
 
 ```bash
 cd ~/research/lit-review
-ccr claude "I have a folder of plain-text abstracts from a \
+rp claude "I have a folder of plain-text abstracts from a \
   systematic review. Categorize each abstract by methodology \
   (qualitative/quantitative/mixed), extract the sample size and \
   key findings, and create a summary spreadsheet."
@@ -539,7 +539,7 @@ ccr claude "I have a folder of plain-text abstracts from a \
 
 ```bash
 cd ~/research/writing
-ccr claude "Read draft.md in this directory. This is a methods \
+rp claude "Read draft.md in this directory. This is a methods \
   section for a psychology paper. Suggest improvements for clarity, \
   check that the statistical reporting follows APA format, and flag \
   any claims that aren't well-supported by the described methodology."
@@ -551,7 +551,7 @@ ccr claude "Read draft.md in this directory. This is a methods \
 
 ```bash
 cd ~/research/scraping
-ccr claude "Write a Python script that downloads all publicly \
+rp claude "Write a Python script that downloads all publicly \
   available CSV datasets from data.gov matching the search term \
   'air quality'. Save them in a data/ subdirectory with a manifest \
   file listing each dataset's URL, title, and download date."
@@ -565,7 +565,7 @@ Claude can install `requests`, `beautifulsoup4`, `selenium`, or whatever is need
 
 ```bash
 cd ~/research/repro-project
-ccr claude "Set up a reproducible Python project. \
+rp claude "Set up a reproducible Python project. \
   Create a pyproject.toml with pinned dependencies, a Makefile that \
   runs the full analysis pipeline from raw data to final figures, \
   and a README explaining how to reproduce the results."
@@ -579,7 +579,7 @@ Because the container starts from a known image, your collaborators can recreate
 
 ```bash
 cd ~/teaching/course-materials
-ccr claude "Create a set of 5 progressive Python \
+rp claude "Create a set of 5 progressive Python \
   exercises teaching pandas for data analysis. Each exercise should \
   have a starter file with instructions, a solution file, a sample \
   dataset, and auto-grading tests. Target audience: social science \
@@ -594,7 +594,7 @@ DuckDB is pre-installed and can directly query CSV and Parquet files without imp
 
 ```bash
 cd ~/research/db-project
-ccr claude "I have several large CSV files (>1GB each) in \
+rp claude "I have several large CSV files (>1GB each) in \
   this directory. Use DuckDB to: (1) explore their schemas, \
   (2) join them on participant_id, (3) run aggregate queries \
   to compute summary statistics by group, (4) export the results \
@@ -607,7 +607,7 @@ ccr claude "I have several large CSV files (>1GB each) in \
 
 ```bash
 cd ~/research/simulation
-ccr claude "Write a Python simulation of a Schelling \
+rp claude "Write a Python simulation of a Schelling \
   segregation model. Run it across a grid of parameters \
   (tolerance = 0.3, 0.5, 0.7; grid sizes = 50, 100, 200). \
   Save results as CSV and generate heatmap visualizations \
@@ -624,7 +624,7 @@ The container has all three runtimes pre-installed. Claude can seamlessly switch
 
 ```bash
 cd ~/research/multi-lang
-ccr claude "Clean the raw data using Python pandas, \
+rp claude "Clean the raw data using Python pandas, \
   run the statistical models in R, and build an interactive \
   HTML dashboard using Observable Plot in JavaScript. \
   Wire them together with a just recipe that runs the full pipeline."
@@ -635,16 +635,16 @@ ccr claude "Clean the raw data using Python pandas, \
 Each container is independent — one per project folder. You can have as many as you need:
 
 ```bash
-# Each cd + ccr claude pair auto-creates a container named after the folder.
-cd ~/research/dissertation-ch3 && ccr claude
+# Each cd + rp claude pair auto-creates a container named after the folder.
+cd ~/research/dissertation-ch3 && rp claude
 # (later, in a new terminal)
-cd ~/grants/grant-nsf-2026 && ccr claude
+cd ~/grants/grant-nsf-2026 && rp claude
 # (later, in another terminal)
-cd ~/collabs/collab-with-jones-lab && ccr claude
-cd ~/teaching/teaching-stats101 && ccr claude
+cd ~/collabs/collab-with-jones-lab && rp claude
+cd ~/teaching/teaching-stats101 && rp claude
 ```
 
-Each project has its own folder, its own container, and its own installed packages. They don't interfere with each other. Use `ccr list` to see them all.
+Each project has its own folder, its own container, and its own installed packages. They don't interfere with each other. Use `rp list` to see them all.
 
 ### 12. Safe Experimentation
 
@@ -653,7 +653,7 @@ Each project has its own folder, its own container, and its own installed packag
 ```bash
 mkdir -p ~/sandbox/experiment
 cd ~/sandbox/experiment
-ccr shell                       # auto-creates the container
+rp shell                       # auto-creates the container
 
 # Inside the container, install and try anything
 sudo apt-get install -y some-obscure-tool
@@ -661,70 +661,70 @@ uv pip install some-experimental-library
 
 # If it all goes wrong
 exit
-ccr destroy                     # Gone. No trace.
-ccr claude                      # Fresh start — auto-creates a new container.
+rp destroy                     # Gone. No trace.
+rp claude                      # Fresh start — auto-creates a new container.
 ```
 
 ---
 
 ## Recipes Reference
 
-Run `ccr <recipe>` from any folder. By default, recipes that take a `<name>` argument default to the basename of the current folder — so `cd ~/foo && ccr claude` is the same as `ccr claude foo`. Passing a name explicitly overrides this.
+Run `rp <recipe>` from any folder. By default, recipes that take a `<name>` argument default to the basename of the current folder — so `cd ~/foo && rp claude` is the same as `rp claude foo`. Passing a name explicitly overrides this.
 
 `setup`, `build`, and `rebuild` don't depend on the current folder. Everything else does (it determines which container is acted on, and what gets mounted as `/workspace` on auto-create).
 
 | Command | What It Does |
 |---------|-------------|
-| `ccr setup` | One-time setup: installs Apple Container and starts its service |
-| `ccr build` | Builds the container image from the Dockerfile |
-| `ccr rebuild` | Rebuilds from scratch (ignoring cache). Use if the image seems broken |
-| `ccr create [name]` | Creates a container bound to the current folder (auto-runs on first `claude`/`shell`/`login`, so you rarely call this directly) |
-| `ccr create [name] -- <args>` | Creates a container with extra `container` CLI options (ports, mounts, etc.) |
-| `ccr login [name]` | Log in with Claude subscription (auto-creates container if needed) |
-| `ccr start [name]` | Starts a stopped container |
-| `ccr stop [name]` | Stops a running container (preserves state) |
-| `ccr restart [name]` | Restarts a container |
-| `ccr shell [name]` | Opens a terminal inside the container (auto-creates and auto-starts) |
-| `ccr claude [name]` | Opens Claude in YOLO mode (auto-creates and auto-starts) |
-| `ccr claude [name] "prompt"` | Runs Claude with a specific task |
-| `ccr claude-safe [name]` | Opens Claude with permission prompts |
-| `ccr claude-safe [name] "prompt"` | Runs safe-mode Claude with a specific task |
-| `ccr cp-to [name] <src> <dest>` | Copies a file from your Mac into the container |
-| `ccr cp-from [name] <src> <dest>` | Copies a file from the container to your Mac |
-| `ccr destroy [name]` | Deletes the container (your folder on the Mac is kept) |
-| `ccr list` | Shows all claude containers, their status, and the host folder each is bound to |
-| `ccr logs [name]` | Shows the container's log output |
-| `ccr stats` | Shows CPU/memory usage for all running containers |
-| `ccr service-start` | Starts the Apple Container service (if you stopped it) |
-| `ccr service-stop` | Stops the Apple Container service (frees all resources) |
-| `ccr service-status` | Shows whether the Apple Container service is running |
+| `rp setup` | One-time setup: installs Apple Container and starts its service |
+| `rp build` | Builds the container image from the Dockerfile |
+| `rp rebuild` | Rebuilds from scratch (ignoring cache). Use if the image seems broken |
+| `rp create [name]` | Creates a container bound to the current folder (auto-runs on first `claude`/`shell`/`login`, so you rarely call this directly) |
+| `rp create [name] -- <args>` | Creates a container with extra `container` CLI options (ports, mounts, etc.) |
+| `rp login [name]` | Log in with Claude subscription (auto-creates container if needed) |
+| `rp start [name]` | Starts a stopped container |
+| `rp stop [name]` | Stops a running container (preserves state) |
+| `rp restart [name]` | Restarts a container |
+| `rp shell [name]` | Opens a terminal inside the container (auto-creates and auto-starts) |
+| `rp claude [name]` | Opens Claude in YOLO mode (auto-creates and auto-starts) |
+| `rp claude [name] "prompt"` | Runs Claude with a specific task |
+| `rp claude-safe [name]` | Opens Claude with permission prompts |
+| `rp claude-safe [name] "prompt"` | Runs safe-mode Claude with a specific task |
+| `rp cp-to [name] <src> <dest>` | Copies a file from your Mac into the container |
+| `rp cp-from [name] <src> <dest>` | Copies a file from the container to your Mac |
+| `rp destroy [name]` | Deletes the container (your folder on the Mac is kept) |
+| `rp list` | Shows all claude containers, their status, and the host folder each is bound to |
+| `rp logs [name]` | Shows the container's log output |
+| `rp stats` | Shows CPU/memory usage for all running containers |
+| `rp service-start` | Starts the Apple Container service (if you stopped it) |
+| `rp service-stop` | Stops the Apple Container service (frees all resources) |
+| `rp service-status` | Shows whether the Apple Container service is running |
 
-> `ccr` is just a thin wrapper around `just` that preserves your current directory. If you prefer, you can `cd` into the `claude-container` repo and run the recipes as `just <recipe>` — the cwd-anchored behavior still applies because the recipes read your *invocation* directory.
+> `rp` is just a thin wrapper around `just` that preserves your current directory. If you prefer, you can `cd` into the `robo-pen-default` repo and run the recipes as `just <recipe>` — the cwd-anchored behavior still applies because the recipes read your *invocation* directory.
 
 ---
 
 ## Troubleshooting
 
-### "command not found: ccr"
+### "command not found: rp"
 
-Either `ccr` isn't on your PATH or it isn't executable. Re-check the install step:
+Either `rp` isn't on your PATH or it isn't executable. Re-check the install step:
 
 ```bash
-cp /path/to/claude-container/ccr ~/bin/ccr
-chmod +x ~/bin/ccr
+cp /path/to/robo-pen-default/rp ~/bin/rp
+chmod +x ~/bin/rp
 ```
 
-If you cloned the repo somewhere other than `~/repos/claude-container`, also set `CLAUDE_CONTAINER_DIR` in your `~/.zshrc` (see the install tip above).
+If you cloned the repo somewhere other than `~/repos/robo-pen-default`, also set `ROBO_PEN_DIR` in your `~/.zshrc` (see the install tip above).
 
 ### `just` commands don't work / "No justfile found"
 
-If you're invoking `just` directly (not through `ccr`), make sure you are in the `claude-container` directory:
+If you're invoking `just` directly (not through `rp`), make sure you are in the `robo-pen-default` directory:
 
 ```bash
-cd /path/to/claude-container
+cd /path/to/robo-pen-default
 ```
 
-`ccr` handles this for you automatically — it's the recommended invocation.
+`rp` handles this for you automatically — it's the recommended invocation.
 
 ### "command not found: just"
 
@@ -735,12 +735,12 @@ Install just: `brew install just`
 The Apple Container service isn't running. Start it:
 
 ```bash
-ccr service-start
+rp service-start
 ```
 
-### "ccr build" is failing or taking forever
+### "rp build" is failing or taking forever
 
-Make sure the Apple Container service is running (`ccr service-status`). If the build fails on a specific step, try `ccr rebuild` for a clean build. Check your internet connection — the build downloads packages from the internet.
+Make sure the Apple Container service is running (`rp service-status`). If the build fails on a specific step, try `rp rebuild` for a clean build. Check your internet connection — the build downloads packages from the internet.
 
 ### "Container `claude-foo` is bound to `/Users/.../other-path` but you're in `/Users/.../foo`"
 
@@ -751,34 +751,34 @@ Two common causes and what to do:
 1. **Two different folders share the same basename.** For example, you have both `~/work/foo` and `~/personal/foo`. The default container name (`claude-foo`) is the same for both. Fix this by passing an explicit name in at least one of them:
    ```bash
    cd ~/personal/foo
-   ccr claude foo-personal
+   rp claude foo-personal
    ```
 
 2. **You moved or renamed the project folder.** The container was created when the folder lived elsewhere. Either move the folder back, or destroy the container and let it be recreated from the new location:
    ```bash
-   ccr destroy claude-foo
+   rp destroy claude-foo
    cd /new/location/foo
-   ccr claude
+   rp claude
    ```
 
 ### "Container already exists"
 
-A container with that name already exists. If it's the one you want, just use it (`ccr claude` from the right folder, or `ccr claude <name>`). Otherwise destroy it first:
+A container with that name already exists. If it's the one you want, just use it (`rp claude` from the right folder, or `rp claude <name>`). Otherwise destroy it first:
 
 ```bash
-ccr destroy <name>
+rp destroy <name>
 ```
 
-Then `cd` into the folder you want and run `ccr claude` again to recreate.
+Then `cd` into the folder you want and run `rp claude` again to recreate.
 
 ### Claude says it's not authenticated / "ANTHROPIC_API_KEY not set"
 
-**Subscription users:** Run `ccr login` from the project folder to authenticate. You need to do this once per container (and again after `ccr destroy` + recreate).
+**Subscription users:** Run `rp login` from the project folder to authenticate. You need to do this once per container (and again after `rp destroy` + recreate).
 
-**API key users:** Make sure you have a `.env` file (not `.env.example`) in the `claude-container` repo with your actual API key:
+**API key users:** Make sure you have a `.env` file (not `.env.example`) in the `robo-pen-default` repo with your actual API key:
 
 ```bash
-cat /path/to/claude-container/.env
+cat /path/to/robo-pen-default/.env
 # Should show: ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -786,8 +786,8 @@ If you created the container before adding the key, destroy and recreate it:
 
 ```bash
 cd /path/to/project
-ccr destroy
-ccr claude
+rp destroy
+rp claude
 ```
 
 ### My Mac is slow with containers running
@@ -795,22 +795,22 @@ ccr claude
 Stop containers you aren't using:
 
 ```bash
-ccr stats        # See what's using resources
-ccr stop <name>  # Stop idle containers
+rp stats        # See what's using resources
+rp stop <name>  # Stop idle containers
 ```
 
 Or stop the Apple Container service entirely when you're done for the day:
 
 ```bash
-ccr service-stop
+rp service-stop
 ```
 
 ### I want to start completely fresh
 
 ```bash
 cd /path/to/project
-ccr destroy     # Remove the container
-ccr claude      # Auto-recreate it from the base image
+rp destroy     # Remove the container
+rp claude      # Auto-recreate it from the base image
 ```
 
 Your project folder on your Mac is untouched. Only the container (installed packages, config changes) is reset.
@@ -819,7 +819,7 @@ Your project folder on your Mac is untouched. Only the container (installed pack
 
 ## Advanced: Customizing Claude's Behavior
 
-The project includes two configuration files that control how Claude behaves inside containers. You can edit these and then run `ccr rebuild` to apply changes to all future containers.
+The project includes two configuration files that control how Claude behaves inside containers. You can edit these and then run `rp rebuild` to apply changes to all future containers.
 
 - **`config/CLAUDE.md`** — Instructions that Claude reads when it starts. You can add project-wide conventions, preferred libraries, coding style, or any other guidance. Think of it as a standing set of instructions for your research assistant.
 
@@ -828,7 +828,7 @@ The project includes two configuration files that control how Claude behaves ins
 After editing either file, rebuild the image:
 
 ```bash
-ccr rebuild
+rp rebuild
 ```
 
 Existing containers are **not** affected — only new containers created after the rebuild will pick up the changes.
@@ -842,7 +842,7 @@ Existing containers are **not** affected — only new containers created after t
 | **API key** | A secret string that authenticates you with Anthropic's servers |
 | **Apple Container** | Apple's native macOS tool for building and running OCI-compatible Linux containers. Runs one lightweight VM per container using Apple's virtualization framework |
 | **Bind mount** | A shared folder between your Mac and a container. In this tool, the bind mount source is whichever folder you were `cd`'d into when the container was created |
-| **`ccr`** | The "Claude Container Runner" wrapper script. Lets you invoke recipes from any folder while keeping your current directory as the anchor for `/workspace` |
+| **`rp`** | The "Claude Container Runner" wrapper script. Lets you invoke recipes from any folder while keeping your current directory as the anchor for `/workspace` |
 | **Claude Code** | Anthropic's command-line AI coding assistant |
 | **Container** | An isolated Linux environment running on your Mac |
 | **cwd-anchored** | The model this tool uses: the folder you are `cd`'d into (your current working directory) is what gets mounted as `/workspace`, and the container is named after that folder by default |

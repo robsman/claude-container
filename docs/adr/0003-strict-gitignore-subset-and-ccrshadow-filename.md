@@ -13,4 +13,4 @@ Reasoning:
 - **`go-gitignore` (the library we use) treats mid-slash patterns as unanchored**, which diverges from real `git` behavior. We override classification so mid-slash patterns are anchored per git spec; users copying patterns from a real `.gitignore` get the behavior they expect.
 - **Negation conflicts with our model.** A path is either shadowed or not — there's no "shadow this directory but expose this specific file" because re-introducing a single file would require crossing the boundary at a specific subpath, which complicates the resolution layer without clear demand.
 
-Trade-off: users with `.gitignore` muscle memory must know "negation isn't supported". The lint subcommand (`ccr lint`) reports unsupported patterns explicitly.
+Trade-off: users with `.gitignore` muscle memory must know "negation isn't supported". The lint subcommand (`rp lint`) reports unsupported patterns explicitly.

@@ -1,7 +1,7 @@
 # rp-base — minimal image holding the rp-fuse binary, the init script, and
-# the OS-level bits the ccr overlay needs to layer onto any user-chosen image.
-# Built via `ccr build-base`. The default `claude-container` image FROMs this;
-# per-project images apply the same ccr layer as a final stage atop a user's
+# the OS-level bits the rp overlay needs to layer onto any user-chosen image.
+# Built via `rp build-base`. The default `robo-pen-default` image FROMs this;
+# per-project images apply the same rp layer as a final stage atop a user's
 # image of choice (see ADR-0006).
 
 # ── Stage 1: build rp-fuse (Go) ─────────────────────────────────
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # Default unprivileged user. Project images may adopt a different user via
-# `user:` in .rp/config.yaml; ccr enforces uid ≠ 0 + no sudoers entry.
+# `user:` in .rp/config.yaml; rp enforces uid ≠ 0 + no sudoers entry.
 RUN useradd -m -s /bin/bash -u 1000 coder
 
 # Allow non-root processes to access the FUSE mount with allow_other.

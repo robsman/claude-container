@@ -1,6 +1,6 @@
 package main
 
-// The `config` subcommand lets shell scripts (Justfile recipes, ccr wrapper)
+// The `config` subcommand lets shell scripts (Justfile recipes, rp wrapper)
 // inspect .rp/config.yaml without re-implementing the YAML parser.
 
 import (

@@ -97,7 +97,7 @@ func parseProjectConfigBytes(data []byte) (*ProjectConfig, error) {
 	return cfg, nil
 }
 
-// Validate rejects configs that violate ccr's invariants. Does not touch the
+// Validate rejects configs that violate rp's invariants. Does not touch the
 // filesystem — use ResolveContext / ResolveProfile separately for path checks.
 func (c *ProjectConfig) Validate() error {
 	if c.Image != "" && c.Build != nil {
@@ -195,7 +195,7 @@ func validateUserName(u string) error {
 		return errors.New("empty user name")
 	}
 	if u == "root" {
-		return errors.New("user `root` is not allowed; ccr requires an unprivileged identity")
+		return errors.New("user `root` is not allowed; rp requires an unprivileged identity")
 	}
 	for i, r := range u {
 		if r == '_' || r == '-' || r == '.' {

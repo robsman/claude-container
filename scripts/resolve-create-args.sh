@@ -44,7 +44,7 @@ if [ -x "$CCR_FUSE" ] && [ -f "$CONFIG" ]; then
 fi
 
 # Forward RP_DEBUG if set in the host shell. Lets the user diagnose a
-# specific session without baking debug into config: `RP_DEBUG=1 ccr run`.
+# specific session without baking debug into config: `RP_DEBUG=1 rp run`.
 if [ "${RP_DEBUG:-}" = "1" ]; then
     CONTAINER_ENV="$CONTAINER_ENV -e RP_DEBUG=1"
 fi

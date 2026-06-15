@@ -7,7 +7,7 @@ You are running inside an isolated container (Debian bookworm). You run as user 
 - `/workspace` — **Project files**, mediated by `rp-fuse`. All work should happen here.
   - Paths NOT listed in `/workspace/.rp/shadow` pass through to the host bind — edits propagate to the host filesystem normally.
   - Paths LISTED in `/workspace/.rp/shadow` are container-local: their content lives only inside the container's shadow store and never touches the host. Host's matching files are invisible.
-- `/workspace/.rp/shadow` — Read-only inside the container. Edit it from the host to change the shadow rules; restart the container (`ccr stop && ccr start`) for the change to take effect.
+- `/workspace/.rp/shadow` — Read-only inside the container. Edit it from the host to change the shadow rules; restart the container (`rp stop && rp start`) for the change to take effect.
 - `/home/coder` — Your home directory. Ephemeral — lost when the container is destroyed.
 
 ## Installing Extra Packages
@@ -23,7 +23,7 @@ npm install <package>
 R -e 'install.packages("tidyverse", repos="https://cloud.r-project.org")'
 ```
 
-**System packages (apt) are NOT installable from inside the container** — there is no sudo. If you need a new system package, ask the user to add it to the host-side `Dockerfile` and run `ccr rebuild`.
+**System packages (apt) are NOT installable from inside the container** — there is no sudo. If you need a new system package, ask the user to add it to the host-side `Dockerfile` and run `rp rebuild`.
 
 ## Tips
 

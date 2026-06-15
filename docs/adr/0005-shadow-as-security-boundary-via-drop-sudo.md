@@ -10,7 +10,7 @@ Verified by spike (2026-06-13): a `coder` exec'd process has `CapInh = CapPrm = 
 
 Trade-off accepted:
 
-- **Lose**: `apt-get`, `pip install -g`, system config changes from inside the container. The in-container `CLAUDE.md` advice to "install anything" is removed; new system packages must be baked into the image via `ccr rebuild`.
+- **Lose**: `apt-get`, `pip install -g`, system config changes from inside the container. The in-container `CLAUDE.md` advice to "install anything" is removed; new system packages must be baked into the image via `rp rebuild`.
 - **Gain**: Claude (or any in-container process) genuinely cannot read host content outside the `.ccrshadow` ruleset, even with intent.
 
 The earlier broader path to harden was rejected (rewriting go-fuse loopback to `openat`-based access, fork maintenance, fragility). The chosen path is simpler: rely on POSIX perms + capability-less user, plus a tmpfs cover. Container restart is required to take effect; the boundary is enforced from PID 1 onwards.

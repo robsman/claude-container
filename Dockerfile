@@ -1,7 +1,7 @@
-# claude-container — default per-project base image. Used when a workspace
+# robo-pen-default — default per-project base image. Used when a workspace
 # has no `.rp/Dockerfile` and no `.rp/config.yaml` `image:` / `build:` line.
 # Carries the toolchain (Node, Python+uv, R, DuckDB, just, build-essential)
-# but NO agent — agent profiles are installed by the ccr overlay at create
+# but NO agent — agent profiles are installed by the rp overlay at create
 # time, so the same default image works for claude-code, opencode, etc.
 
 FROM rp-base

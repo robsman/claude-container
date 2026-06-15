@@ -1,6 +1,6 @@
 set dotenv-load
 
-image := "claude-container"
+image := "robo-pen-default"
 host_dir := invocation_directory()
 host_name := file_name(invocation_directory())
 
@@ -8,7 +8,7 @@ host_name := file_name(invocation_directory())
 # per agent on the same workspace. Resolves at every `just` invocation by
 # asking the rp-fuse host binary for the workspace's .rp/config.yaml agent
 # field (defaults to claude-code). Falls back to claude-code if the binary
-# does not exist yet (e.g. before `ccr build-host` on a fresh checkout).
+# does not exist yet (e.g. before `rp build-host` on a fresh checkout).
 agent := shell(justfile_directory() + "/rp-fuse/rp-fuse-darwin-arm64 config --file " + invocation_directory() + "/.rp/config.yaml field agent 2>/dev/null || echo claude-code")
 
 # Container prefix is workspace-agent-specific:
@@ -22,7 +22,7 @@ list_prefix := "rp-"
 # Memory for the long-lived Apple Container builder VM. Effective only at
 # `container builder start` — once the builder is up, this is ignored.
 # Run `just builder-reset` to apply a new value. 8G is the verified minimum
-# for a full claude-container rebuild including the Claude CLI installer.
+# for a full robo-pen-default rebuild including the Claude CLI installer.
 builder_memory := "8G"
 
 # ── Apple container setup ────────────────────────────────────────
@@ -73,11 +73,11 @@ build-base: builder-ensure
         -t rp-base \
         {{justfile_directory()}}
 
-# Build the default claude-container image (rp-base + Node/Python/R/DuckDB/just/Claude CLI)
+# Build the default robo-pen-default image (rp-base + Node/Python/R/DuckDB/just/Claude CLI)
 build: build-base
     container build -t {{image}} {{justfile_directory()}}
 
-# Rebuild both rp-base and claude-container from scratch, no cache.
+# Rebuild both rp-base and robo-pen-default from scratch, no cache.
 rebuild: builder-ensure
     container build --no-cache \
         -f {{justfile_directory()}}/Dockerfile.base \
@@ -85,7 +85,7 @@ rebuild: builder-ensure
         {{justfile_directory()}}
     container build --no-cache -t {{image}} {{justfile_directory()}}
 
-# Cross-build the host-side rp-fuse binary (darwin/arm64), used by `ccr lint`
+# Cross-build the host-side rp-fuse binary (darwin/arm64), used by `rp lint`
 build-host:
     container run --rm \
         -v "{{justfile_directory()}}/rp-fuse":/src \
@@ -104,7 +104,7 @@ _ensure name=host_name:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! container list -a -q | grep -qx "{{prefix}}{{name}}"; then
-        # build-project-image.sh always produces a tag: it overlays ccr-bits +
+        # build-project-image.sh always produces a tag: it overlays rp-bits +
         # the configured agent profile onto the user's chosen base (image:,
         # build:, .rp/Dockerfile, or the global default).
         IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
@@ -128,7 +128,7 @@ _ensure name=host_name:
             echo "       current directory is:               {{host_dir}}" >&2
             echo "" >&2
             echo "Either cd into the recorded path, or use an explicit name:" >&2
-            echo "  ccr <recipe> <other-name>" >&2
+            echo "  rp <recipe> <other-name>" >&2
             exit 1
         fi
     fi
@@ -142,7 +142,7 @@ create name=host_name *CONTAINER_ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     if container list -a -q | grep -qx "{{prefix}}{{name}}"; then
-        echo "Container {{prefix}}{{name}} already exists. Use 'ccr destroy {{name}}' first."
+        echo "Container {{prefix}}{{name}} already exists. Use 'rp destroy {{name}}' first."
         exit 1
     fi
     IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
@@ -204,25 +204,6 @@ run name=host_name *ARGS: (_ensure name)
         fi
     fi
     container exec -it -u coder {{prefix}}{{name}} "$script" "${args[@]}"
-
-# Run the agent in YOLO mode (auto-creates / auto-starts, optional prompt).
-# Deprecated — use `ccr run` instead. Removed in Phase E.
-claude name=host_name *PROMPT: (_ensure name)
-    #!/usr/bin/env bash
-    if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run.sh -p "{{PROMPT}}"
-    else
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run.sh
-    fi
-
-# Run the agent in permission-gated mode. Deprecated — use `ccr run --gated`.
-claude-safe name=host_name *PROMPT: (_ensure name)
-    #!/usr/bin/env bash
-    if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run-gated.sh -p "{{PROMPT}}"
-    else
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run-gated.sh
-    fi
 
 # Copy files from host to container
 cp-to name src dest:

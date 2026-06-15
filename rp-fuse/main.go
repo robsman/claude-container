@@ -75,7 +75,7 @@ func main() {
 		Path: *shadow,
 		Dev:  uint64(sst.Dev),
 		NewNode: func(rd *fs.LoopbackRoot, parent *fs.Inode, name string, st *syscall.Stat_t) fs.InodeEmbedder {
-			return &fs.LoopbackNode{RootData: rd}
+			return &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: rd}}
 		},
 	}
 	hostRoot := &fs.LoopbackRoot{

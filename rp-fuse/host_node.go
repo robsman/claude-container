@@ -26,6 +26,16 @@ type HostNode struct {
 
 func (n *HostNode) relPath() string { return n.Path(n.Root()) }
 
+// shadowPhase is XOR'd into every StableAttr.Ino assigned to nodes under the
+// shadow tree, keeping their kernel-cache identity disjoint from the backing
+// tree. Without this, a backing inode N and a shadow inode N (both arrive
+// after npm install populates the shadow store with low Ino numbers) hash to
+// the same StableAttr.Ino in go-fuse; the kernel inode cache then aliases
+// them and serves the wrong subtree to OpenDir/Readdir. Backing-tree nodes
+// keep phase 0 — go-fuse's own Lookups don't know about phases, so we only
+// shift the side we control.
+const shadowPhase uint64 = 1 << 63
+
 // idFromStat replicates LoopbackRoot.idFromStat (unexported in go-fuse).
 func idFromStat(rootDev uint64, st *syscall.Stat_t) fs.StableAttr {
 	swapped := (uint64(st.Dev) << 32) | (uint64(st.Dev) >> 32)
@@ -35,6 +45,14 @@ func idFromStat(rootDev uint64, st *syscall.Stat_t) fs.StableAttr {
 		Gen:  1,
 		Ino:  (swapped ^ swappedRootDev) ^ st.Ino,
 	}
+}
+
+// idFromShadowStat returns a StableAttr namespaced under shadowPhase. Use for
+// any node whose backing storage is /var/lib/rp/shadow.
+func idFromShadowStat(rootDev uint64, st *syscall.Stat_t) fs.StableAttr {
+	attr := idFromStat(rootDev, st)
+	attr.Ino ^= shadowPhase
+	return attr
 }
 
 func joinRel(parent, name string) string {
@@ -78,8 +96,8 @@ func (n *HostNode) shadowChild(ctx context.Context, rel string, out *fuse.EntryO
 	if out != nil {
 		out.Attr.FromStat(&st)
 	}
-	node := &fs.LoopbackNode{RootData: n.cfg.ShadowRoot}
-	ch := n.NewInode(ctx, node, idFromStat(n.cfg.ShadowRoot.Dev, &st))
+	node := &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: n.cfg.ShadowRoot}}
+	ch := n.NewInode(ctx, node, idFromShadowStat(n.cfg.ShadowRoot.Dev, &st))
 	return ch, 0
 }
 
@@ -130,7 +148,7 @@ func (n *HostNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 				entries = append(entries, fuse.DirEntry{
 					Name: name,
 					Mode: uint32(st.Mode) & syscall.S_IFMT,
-					Ino:  st.Ino,
+					Ino:  st.Ino ^ shadowPhase,
 				})
 			}
 		}
@@ -260,6 +278,32 @@ func (n *HostNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 		return fs.ToErrno(syscall.Rmdir(n.shadowPath(childRel)))
 	}
 	return n.LoopbackNode.Rmdir(ctx, name)
+}
+
+// ShadowNode wraps go-fuse's LoopbackNode for the shadow tree so that every
+// child node it creates carries a shadowPhase-XOR'd StableAttr.Ino. Without
+// the override, deep paths inside /var/lib/rp/shadow would go through
+// go-fuse's default LoopbackNode.Lookup → idFromStat → unphased Ino, and the
+// kernel cache would alias them with backing inodes that happen to share the
+// raw Ino number (very common — both filesystems frequently have low inode
+// numbers like 159).
+type ShadowNode struct {
+	fs.LoopbackNode
+}
+
+func (n *ShadowNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	parentRel := n.Path(n.Root())
+	full := filepath.Join(n.RootData.Path, parentRel, name)
+	var st syscall.Stat_t
+	if err := syscall.Lstat(full, &st); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	if out != nil {
+		out.Attr.FromStat(&st)
+	}
+	child := &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: n.RootData}}
+	ch := n.NewInode(ctx, child, idFromShadowStat(n.RootData.Dev, &st))
+	return ch, 0
 }
 
 // Rename: same-region only. Cross-region returns EXDEV. Rename touching

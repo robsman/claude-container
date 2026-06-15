@@ -114,19 +114,30 @@ fi
 # Probe for /etc/debian_version (Debian + Debian-derived like Ubuntu set it).
 # Use apt-get as a secondary signal — some Ubuntu spins drop the file but
 # always have apt-get. Surface stderr from the probe container so a runtime
-# crash (entrypoint issue, libc mismatch) reads as such instead of
-# masquerading as "wrong distro".
-probe_err=$(container run --rm "$SOURCE_REF" sh -c '
+# crash (entrypoint issue, libc mismatch, arch mismatch) reads as such
+# instead of masquerading as "wrong distro". Wrap in `if !` so set -e
+# doesn't kill us on the expected failure paths.
+if ! probe_err=$(container run --rm "$SOURCE_REF" sh -c '
     [ -f /etc/debian_version ] && exit 0
     command -v apt-get >/dev/null 2>&1 && exit 0
     echo "neither /etc/debian_version nor apt-get found" >&2
     exit 1
-' 2>&1)
-probe_ec=$?
-if [ "$probe_ec" -ne 0 ]; then
-    cat >&2 <<MSG
-build-project-image: base image '$SOURCE_REF' is not Debian/Ubuntu-derived
-(probe exited $probe_ec):
+' 2>&1); then
+    if grep -q 'platform linux/arm64' <<<"$probe_err"; then
+        cat >&2 <<MSG
+build-project-image: base image '$SOURCE_REF' has no linux/arm64 manifest.
+
+$probe_err
+
+Apple Container runs natively on arm64 (Apple Silicon) and does not emulate
+amd64-only images. Pick a base that publishes an arm64 manifest list — most
+official images do (debian, ubuntu, node:*-bookworm, python:*-slim-bookworm,
+mcr.microsoft.com/devcontainers/javascript-node, etc.). The mcr.microsoft.com
+/devcontainers/universal image is amd64-only at the time of writing.
+MSG
+    else
+        cat >&2 <<MSG
+build-project-image: base image '$SOURCE_REF' rejected:
 
 $probe_err
 
@@ -137,6 +148,7 @@ etc. bases are not supported yet. Use a Debian-based image
 See docs/adr/0006-per-project-images-with-rp-overlay.md for the restriction
 and the path to widening it.
 MSG
+    fi
     exit 1
 fi
 

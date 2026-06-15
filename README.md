@@ -224,6 +224,28 @@ RP_DEBUG=1 rp create myname    # forwarded into the container as -e RP_DEBUG=1
 rp logs myname                  # the verbose stream
 ```
 
+### Diagnosing OOM kills
+Apple Container's default per-container memory ceiling is **1G** — enough for an interactive shell, but `npm install` / `cargo build` / large `pip install` on real projects will blow past it and get the process killed without warning.
+
+```bash
+rp stats                                    # live RSS / CPU
+# Inside the container, after a kill:
+container exec -u root rp-<agent>-<name> sh -c '
+  cat /sys/fs/cgroup/memory.max
+  cat /sys/fs/cgroup/memory.events            # oom_kill > 0 confirms it
+'
+```
+
+Fix by raising the limit in `.rp/config.yaml`:
+
+```yaml
+resources:
+  memory: 8G                                  # or 12G/16G — whatever the Mac can spare
+  cpus: 4
+```
+
+Then `rp destroy && rp create` (memory is a create-time flag).
+
 ---
 
 ## What happens inside the container

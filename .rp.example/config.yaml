@@ -47,13 +47,17 @@
 
 # ── Container resources ────────────────────────────────────────────
 # Forwarded to `container create` as --memory / --cpus. Missing keys =
-# whatever Apple Container picks as default. memory accepts the same size
-# strings Apple Container does: integer + optional K/M/G/T suffix
-# (e.g. 512M, 4G, 16g, 2048K). cpus must be a positive integer.
+# Apple Container's default of 1G per container — too low for `npm install`
+# on typical node projects (gets OOM-killed without warning). Uncomment
+# and raise if `rp run`/`npm install` dies silently; confirm with
+# `rp stats` or `cat /sys/fs/cgroup/memory.events` (oom_kill > 0).
+# memory accepts the same size strings Apple Container does: integer +
+# optional K/M/G/T suffix (e.g. 512M, 4G, 16g, 2048K). cpus must be a
+# positive integer.
 #
 # resources:
-#   memory: 4G
-#   cpus: 2
+#   memory: 8G
+#   cpus: 4
 
 # ── rp-fuse runtime tuning ────────────────────────────────────────
 # Cache TTL for the FUSE attr/entry/negative cache, in seconds. Default 1.0.

@@ -215,8 +215,8 @@ func (n *HostNode) Create(ctx context.Context, name string, flags uint32, mode u
 			return nil, nil, 0, fs.ToErrno(err)
 		}
 		out.FromStat(&st)
-		node := &fs.LoopbackNode{RootData: n.cfg.ShadowRoot}
-		ch := n.NewInode(ctx, node, idFromStat(n.cfg.ShadowRoot.Dev, &st))
+		node := &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: n.cfg.ShadowRoot}}
+		ch := n.NewInode(ctx, node, idFromShadowStat(n.cfg.ShadowRoot.Dev, &st))
 		return ch, fs.NewLoopbackFile(fd), 0, 0
 	}
 	return n.LoopbackNode.Create(ctx, name, flags, mode, out)
@@ -291,9 +291,22 @@ type ShadowNode struct {
 	fs.LoopbackNode
 }
 
+// shadowBackingPath returns the absolute /var/lib/rp/shadow path for a child
+// named `name` of this node.
+func (n *ShadowNode) shadowBackingPath(name string) string {
+	return filepath.Join(n.RootData.Path, n.Path(n.Root()), name)
+}
+
+// registerShadowChild builds the StableAttr for a freshly-stat'd child and
+// returns a ShadowNode-wrapped inode. Centralises the phase-XOR so every
+// create path in ShadowNode shares one code path.
+func (n *ShadowNode) registerShadowChild(ctx context.Context, st *syscall.Stat_t) *fs.Inode {
+	child := &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: n.RootData}}
+	return n.NewInode(ctx, child, idFromShadowStat(n.RootData.Dev, st))
+}
+
 func (n *ShadowNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	parentRel := n.Path(n.Root())
-	full := filepath.Join(n.RootData.Path, parentRel, name)
+	full := n.shadowBackingPath(name)
 	var st syscall.Stat_t
 	if err := syscall.Lstat(full, &st); err != nil {
 		return nil, fs.ToErrno(err)
@@ -301,9 +314,62 @@ func (n *ShadowNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut
 	if out != nil {
 		out.Attr.FromStat(&st)
 	}
-	child := &ShadowNode{LoopbackNode: fs.LoopbackNode{RootData: n.RootData}}
-	ch := n.NewInode(ctx, child, idFromShadowStat(n.RootData.Dev, &st))
-	return ch, 0
+	return n.registerShadowChild(ctx, &st), 0
+}
+
+func (n *ShadowNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	p := n.shadowBackingPath(name)
+	if err := syscall.Mkdir(p, mode); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Lstat(p, &st); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	out.Attr.FromStat(&st)
+	return n.registerShadowChild(ctx, &st), 0
+}
+
+func (n *ShadowNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
+	p := n.shadowBackingPath(name)
+	flags &^= syscall.O_APPEND
+	fd, err := syscall.Open(p, int(flags)|os.O_CREATE, mode)
+	if err != nil {
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		syscall.Close(fd)
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+	out.FromStat(&st)
+	return n.registerShadowChild(ctx, &st), fs.NewLoopbackFile(fd), 0, 0
+}
+
+func (n *ShadowNode) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	p := n.shadowBackingPath(name)
+	if err := syscall.Symlink(target, p); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Lstat(p, &st); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	out.Attr.FromStat(&st)
+	return n.registerShadowChild(ctx, &st), 0
+}
+
+func (n *ShadowNode) Mknod(ctx context.Context, name string, mode, rdev uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	p := n.shadowBackingPath(name)
+	if err := syscall.Mknod(p, mode, int(rdev)); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Lstat(p, &st); err != nil {
+		return nil, fs.ToErrno(err)
+	}
+	out.Attr.FromStat(&st)
+	return n.registerShadowChild(ctx, &st), 0
 }
 
 // Rename: same-region only. Cross-region returns EXDEV. Rename touching

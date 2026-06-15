@@ -1,11 +1,11 @@
-// ccr-fuse: rule-aware passthrough FUSE.
+// rp-fuse: rule-aware passthrough FUSE.
 //
 // Layout:
 //   --backing <host>  : real host workspace bind mount (lower)
 //   --shadow  <store> : container-local writable shadow store
 //                       Mirrors FUSE paths: a matched rel path "a/b" lives at <store>/a/b.
 //   --mount   <mnt>   : FUSE mount point exposed to the user/Claude
-//   --rules   <file>  : path to .ccr/shadow (gitignore-style patterns, one per line)
+//   --rules   <file>  : path to .rp/shadow (gitignore-style patterns, one per line)
 //
 // Per-path semantics:
 //   * Path NOT matched by any rule: passthrough to <host>/<path>. Edits propagate to host.
@@ -44,7 +44,7 @@ func main() {
 	backing := flag.String("backing", "", "backing host directory (absolute)")
 	shadow := flag.String("shadow", "", "shadow store directory (absolute)")
 	mountpoint := flag.String("mount", "", "mount point (absolute)")
-	rulesPath := flag.String("rules", "", "path to .ccr/shadow (optional)")
+	rulesPath := flag.String("rules", "", "path to .rp/shadow (optional)")
 	debug := flag.Bool("debug", false, "enable FUSE debug logging")
 	cacheSec := flag.Float64("cache", 1.0, "attr/entry cache TTL in seconds")
 	flag.Parse()
@@ -104,8 +104,8 @@ func main() {
 		MountOptions: fuse.MountOptions{
 			Debug:         *debug,
 			AllowOther:    true,
-			FsName:        "ccr-fuse",
-			Name:          "ccr-fuse",
+			FsName:        "rp-fuse",
+			Name:          "rp-fuse",
 			MaxBackground: 32,
 			MaxWrite:      1 << 20,
 			DisableXAttrs: true,

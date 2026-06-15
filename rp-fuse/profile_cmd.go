@@ -11,15 +11,15 @@ import (
 	"strings"
 )
 
-// runProfile is the entrypoint for `ccr-fuse profile`.
+// runProfile is the entrypoint for `rp-fuse profile`.
 func runProfile(args []string) {
 	fs := flag.NewFlagSet("profile", flag.ExitOnError)
 	workspace := fs.String("workspace", "", "absolute path of the workspace directory")
 	repoDir := fs.String("repo-dir", "", "absolute path of the claude-container repo (where agent.profiles/ lives)")
-	agent := fs.String("agent", "", "agent profile name (overrides .ccr/config.yaml if set)")
-	configPath := fs.String("config", "", "path to .ccr/config.yaml (used to determine agent when --agent is unset)")
+	agent := fs.String("agent", "", "agent profile name (overrides .rp/config.yaml if set)")
+	configPath := fs.String("config", "", "path to .rp/config.yaml (used to determine agent when --agent is unset)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: ccr-fuse profile --workspace <ws> --repo-dir <repo> [--agent <name>|--config <path>] <subcommand>")
+		fmt.Fprintln(os.Stderr, "Usage: rp-fuse profile --workspace <ws> --repo-dir <repo> [--agent <name>|--config <path>] <subcommand>")
 		fmt.Fprintln(os.Stderr, "Subcommands:")
 		fmt.Fprintln(os.Stderr, "  resolve            print absolute profile directory")
 		fmt.Fprintln(os.Stderr, "  source             print profile source: workspace | builtin")
@@ -38,7 +38,7 @@ func runProfile(args []string) {
 
 	agentName, err := resolveAgentName(*agent, *configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ccr-fuse profile: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rp-fuse profile: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -47,7 +47,7 @@ func runProfile(args []string) {
 
 	dir, source, err := ResolveProfile(*workspace, *repoDir, agentName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ccr-fuse profile: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rp-fuse profile: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -62,7 +62,7 @@ func runProfile(args []string) {
 
 	m, err := ParseProfileManifest(dir + "/manifest.yaml")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ccr-fuse profile: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rp-fuse profile: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -74,12 +74,12 @@ func runProfile(args []string) {
 		return
 	case "field":
 		if len(subArgs) < 1 {
-			fmt.Fprintln(os.Stderr, "ccr-fuse profile field: name required")
+			fmt.Fprintln(os.Stderr, "rp-fuse profile field: name required")
 			os.Exit(2)
 		}
 		out, err := profileManifestField(m, subArgs[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ccr-fuse profile field: %v\n", err)
+			fmt.Fprintf(os.Stderr, "rp-fuse profile field: %v\n", err)
 			os.Exit(1)
 		}
 		if out != "" {
@@ -87,12 +87,12 @@ func runProfile(args []string) {
 		}
 		return
 	}
-	fmt.Fprintf(os.Stderr, "ccr-fuse profile: unknown subcommand %q\n", sub)
+	fmt.Fprintf(os.Stderr, "rp-fuse profile: unknown subcommand %q\n", sub)
 	os.Exit(2)
 }
 
 // resolveAgentName picks the agent name from --agent (highest priority) or
-// the parsed .ccr/config.yaml (`agent:` field, default `claude-code`).
+// the parsed .rp/config.yaml (`agent:` field, default `claude-code`).
 func resolveAgentName(flagAgent, configPath string) (string, error) {
 	if flagAgent != "" {
 		if err := validateAgentName(flagAgent); err != nil {

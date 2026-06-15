@@ -67,7 +67,7 @@ For example, if you `cd ~/my-research-project` and run `ccr claude`, the folder 
 
 This is how your work survives even if the container is destroyed. The container is disposable; your project folder on your Mac is permanent.
 
-**Collision safety.** Each container records the host folder it was created from in a label (`ccr.host_path=...`). When you run `ccr claude` or `ccr shell`, the tool checks that the container's recorded path matches your current working directory. If they don't match, it aborts with a clear error and suggests using an explicit name (see below) — this prevents you from accidentally opening a container that was built around a different folder.
+**Collision safety.** Each container records the host folder it was created from in a label (`rp.host_path=...`). When you run `ccr claude` or `ccr shell`, the tool checks that the container's recorded path matches your current working directory. If they don't match, it aborts with a clear error and suggests using an explicit name (see below) — this prevents you from accidentally opening a container that was built around a different folder.
 
 **Explicit names.** By default the container is named after the current folder (e.g., `cd ~/my-project && ccr claude` creates `claude-my-project`). You can override this by passing a name explicitly: `ccr claude my-custom-name`. Use explicit names when you want multiple containers per folder, or when two different folders happen to share a basename.
 
@@ -847,7 +847,7 @@ Existing containers are **not** affected — only new containers created after t
 | **Container** | An isolated Linux environment running on your Mac |
 | **cwd-anchored** | The model this tool uses: the folder you are `cd`'d into (your current working directory) is what gets mounted as `/workspace`, and the container is named after that folder by default |
 | **Dockerfile** | A blueprint that describes how to build a container image (also read by Apple Container) |
-| **Host path label** | A label (`ccr.host_path=...`) recorded on each container that points back to the Mac folder it was created from. Used to detect collisions when names would otherwise overlap |
+| **Host path label** | A label (`rp.host_path=...`) recorded on each container that points back to the Mac folder it was created from. Used to detect collisions when names would otherwise overlap |
 | **Image** | A snapshot/template used to create containers (like a class vs an instance) |
 | **Justfile** | A file containing shortcut recipes for terminal commands |
 | **Repository (repo)** | A project folder tracked by git, often hosted on GitHub |

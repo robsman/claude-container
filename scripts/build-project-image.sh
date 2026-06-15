@@ -8,12 +8,12 @@
 # Image source (one of):
 #   * image: <ref>     -> overlay on top of the upstream image
 #   * build: <...>     -> first build user's Dockerfile, then overlay
-#   * .ccr/Dockerfile  -> shorthand for `build:` with default paths
+#   * .rp/Dockerfile  -> shorthand for `build:` with default paths
 #   * none of the above -> overlay on top of the global default image
 #
 # Agent profile:
-#   * agent: <name>    -> ccr-fuse profile resolve looks up either
-#                          .ccr/agents/<name>/ (workspace override) or
+#   * agent: <name>    -> rp-fuse profile resolve looks up either
+#                          .rp/agents/<name>/ (workspace override) or
 #                          agent.profiles/<name>/ (builtin)
 #   * unset            -> defaults to claude-code
 #
@@ -36,16 +36,16 @@ WORKSPACE=$1
 CONT_NAME=$2
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
-CCR_FUSE="$REPO_DIR/ccr-fuse/ccr-fuse-darwin-arm64"
+CCR_FUSE="$REPO_DIR/rp-fuse/rp-fuse-darwin-arm64"
 if [ ! -x "$CCR_FUSE" ]; then
-    echo "build-project-image: host ccr-fuse binary missing; run 'ccr build-host' first" >&2
+    echo "build-project-image: host rp-fuse binary missing; run 'ccr build-host' first" >&2
     exit 1
 fi
 
-CONFIG="$WORKSPACE/.ccr/config.yaml"
-DEFAULT_DOCKERFILE="$WORKSPACE/.ccr/Dockerfile"
+CONFIG="$WORKSPACE/.rp/config.yaml"
+DEFAULT_DOCKERFILE="$WORKSPACE/.rp/Dockerfile"
 
-# Resolve agent + user from .ccr/config.yaml (or defaults).
+# Resolve agent + user from .rp/config.yaml (or defaults).
 AGENT=$("$CCR_FUSE" config --file "$CONFIG" field agent 2>/dev/null || echo "claude-code")
 CCR_USER_CFG=$("$CCR_FUSE" config --file "$CONFIG" field user 2>/dev/null || echo "")
 CCR_USER=${CCR_USER_CFG:-coder}
@@ -72,7 +72,7 @@ case "$SOURCE" in
     build)
         CTX_REL=$("$CCR_FUSE" config --file "$CONFIG" field context)
         DF_REL=$("$CCR_FUSE" config --file "$CONFIG" field dockerfile)
-        CONTEXT=$(cd "$WORKSPACE/.ccr/$CTX_REL" && pwd)
+        CONTEXT=$(cd "$WORKSPACE/.rp/$CTX_REL" && pwd)
         DOCKERFILE="$CONTEXT/$DF_REL"
         SOURCE_REF="$CONT_NAME:user"
         echo "build-project-image: source=build dockerfile=$DOCKERFILE context=$CONTEXT" >&2
@@ -80,8 +80,8 @@ case "$SOURCE" in
         ;;
     dockerfile_default)
         SOURCE_REF="$CONT_NAME:user"
-        echo "build-project-image: source=.ccr/Dockerfile" >&2
-        container build -t "$SOURCE_REF" -f "$DEFAULT_DOCKERFILE" "$WORKSPACE/.ccr" >&2
+        echo "build-project-image: source=.rp/Dockerfile" >&2
+        container build -t "$SOURCE_REF" -f "$DEFAULT_DOCKERFILE" "$WORKSPACE/.rp" >&2
         ;;
     default)
         SOURCE_REF="claude-container"
@@ -105,7 +105,7 @@ ccr's v1 overlay installs fuse3 via apt-get. Alpine, RHEL, Arch, distroless,
 etc. bases are not supported yet. Use a Debian-based image
 (debian:bookworm-slim, ubuntu:24.04, node:*-bookworm, python:*-slim-bookworm).
 
-See docs/adr/0006-per-project-images-with-ccr-overlay.md for the restriction
+See docs/adr/0006-per-project-images-with-rp-overlay.md for the restriction
 and the path to widening it.
 MSG
     exit 1
@@ -121,7 +121,7 @@ mkdir -p "$OVERLAY_CTX/agent"
 cp "$PROFILE_DIR/install.sh" "$OVERLAY_CTX/agent/install.sh"
 cp "$PROFILE_DIR/instructions.md" "$OVERLAY_CTX/agent/instructions.md"
 
-# Profile entrypoint scripts — baked into /usr/local/lib/ccr/ for `ccr run` etc.
+# Profile entrypoint scripts — baked into /usr/local/lib/rp/ for `ccr run` etc.
 for ep_kind in run run_gated login; do
     rel=$("$CCR_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field "entrypoint.$ep_kind")
     if [ -n "$rel" ] && [ -f "$PROFILE_DIR/$rel" ]; then
@@ -142,8 +142,8 @@ while IFS=$'\t' read -r src dst; do
 done <<<"$FILES_LINES"
 
 # Optional workspace-level instruction fragment.
-if [ -f "$WORKSPACE/.ccr/instructions.md" ]; then
-    cp "$WORKSPACE/.ccr/instructions.md" "$OVERLAY_CTX/agent/workspace-instructions.md"
+if [ -f "$WORKSPACE/.rp/instructions.md" ]; then
+    cp "$WORKSPACE/.rp/instructions.md" "$OVERLAY_CTX/agent/workspace-instructions.md"
 fi
 
 INSTRUCTIONS_DST=$("$CCR_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field instructions_dst || true)
@@ -152,7 +152,7 @@ USER_EXIST_CHECK=""
 if [ -n "$CCR_USER_CFG" ]; then
     # User explicitly named in config: must exist in the base image (do not create).
     USER_EXIST_CHECK="RUN id -u $CCR_USER >/dev/null 2>&1 \\
-    || (echo \"ccr-overlay: user '$CCR_USER' does not exist in base image\" >&2; exit 1)"
+    || (echo \"rp-overlay: user '$CCR_USER' does not exist in base image\" >&2; exit 1)"
 else
     # Default coder: create if missing.
     USER_EXIST_CHECK="RUN id -u $CCR_USER >/dev/null 2>&1 \\
@@ -167,7 +167,7 @@ FROM $SOURCE_REF
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
-# fuse3 — required for ccr-fuse to mount /workspace.
+# fuse3 — required for rp-fuse to mount /workspace.
 RUN apt-get update && apt-get install -y --no-install-recommends fuse3 \\
     && rm -rf /var/lib/apt/lists/*
 
@@ -175,39 +175,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends fuse3 \\
 RUN sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf 2>/dev/null \\
     || echo 'user_allow_other' >> /etc/fuse.conf
 
-# Container user (default coder, or whatever .ccr/config.yaml asked for).
+# Container user (default coder, or whatever .rp/config.yaml asked for).
 $USER_EXIST_CHECK
 
 # Hardening invariants per ADR-0006.
 RUN test "\$(id -u $CCR_USER)" -ne 0 \\
-    || (echo "ccr-overlay: user '$CCR_USER' is root, refusing" >&2; exit 1)
+    || (echo "rp-overlay: user '$CCR_USER' is root, refusing" >&2; exit 1)
 RUN ! grep -rqE "(^|[[:space:]])${CCR_USER}([[:space:]]|\$)" /etc/sudoers /etc/sudoers.d/ 2>/dev/null \\
-    || (echo "ccr-overlay: user '$CCR_USER' has a sudoers entry, refusing" >&2; exit 1)
+    || (echo "rp-overlay: user '$CCR_USER' has a sudoers entry, refusing" >&2; exit 1)
 
 # Mount points for the shadow boundary + agent entrypoint dir.
-RUN mkdir -p /var/lib/ccr/shadow /var/lib/ccr/backing /workspace /workspace-real /usr/local/lib/ccr \\
-    && chmod 0700 /var/lib/ccr \\
-    && chown root:root /var/lib/ccr /var/lib/ccr/shadow /var/lib/ccr/backing
+RUN mkdir -p /var/lib/rp/shadow /var/lib/rp/backing /workspace /workspace-real /usr/local/lib/rp \\
+    && chmod 0700 /var/lib/rp \\
+    && chown root:root /var/lib/rp /var/lib/rp/shadow /var/lib/rp/backing
 
-# Pull ccr-fuse + init script + container-fundamentals fragment from ccr-base.
-COPY --from=ccr-base /usr/local/bin/ccr-fuse /usr/local/bin/ccr-fuse
-COPY --from=ccr-base /usr/local/bin/ccr-init.sh /usr/local/bin/ccr-init.sh
-COPY --from=ccr-base /etc/ccr/instructions/00-container.md /etc/ccr/instructions/00-container.md
-RUN chmod 0755 /usr/local/bin/ccr-fuse /usr/local/bin/ccr-init.sh
+# Pull rp-fuse + init script + container-fundamentals fragment from rp-base.
+COPY --from=rp-base /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
+COPY --from=rp-base /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
+COPY --from=rp-base /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
+RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh
 
 # ── Agent profile bundle ($AGENT, source: $PROFILE_SOURCE) ──
-COPY agent/instructions.md /etc/ccr/instructions/20-agent.md
+COPY agent/instructions.md /etc/rp/instructions/20-agent.md
 EOF
 
 if [ -f "$OVERLAY_CTX/agent/workspace-instructions.md" ]; then
-    echo "COPY agent/workspace-instructions.md /etc/ccr/instructions/30-workspace.md"
+    echo "COPY agent/workspace-instructions.md /etc/rp/instructions/30-workspace.md"
 fi
 
 for ep_kind in run run_gated login; do
     flat="$(echo "$ep_kind" | tr _ -).sh"
     if [ -f "$OVERLAY_CTX/agent/$flat" ]; then
-        printf 'COPY agent/%s /usr/local/lib/ccr/%s\n' "$flat" "$flat"
-        printf 'RUN chmod 0755 /usr/local/lib/ccr/%s\n' "$flat"
+        printf 'COPY agent/%s /usr/local/lib/rp/%s\n' "$flat" "$flat"
+        printf 'RUN chmod 0755 /usr/local/lib/rp/%s\n' "$flat"
     fi
 done
 
@@ -235,10 +235,10 @@ if [ -n "$INSTRUCTIONS_DST" ]; then
     expanded_inst=${INSTRUCTIONS_DST//\{\{user\}\}/$CCR_USER}
     expanded_dir=$(dirname "$expanded_inst")
     cat <<EOF
-# Compose agent instructions from /etc/ccr/instructions/*.md (lexical order,
+# Compose agent instructions from /etc/rp/instructions/*.md (lexical order,
 # blank line between fragments) into the agent's expected path.
 RUN mkdir -p $expanded_dir \\
-    && awk 'FNR==1 && NR>1 {print ""} {print}' /etc/ccr/instructions/*.md \\
+    && awk 'FNR==1 && NR>1 {print ""} {print}' /etc/rp/instructions/*.md \\
         > $expanded_inst \\
     && chown -R $CCR_USER:$CCR_USER $expanded_dir
 EOF
@@ -251,7 +251,7 @@ USER $CCR_USER
 EOF
 } > "$OVERLAY_DOCKERFILE"
 
-if [ "${CCR_DEBUG:-}" = "1" ]; then
+if [ "${RP_DEBUG:-}" = "1" ]; then
     echo "build-project-image: overlay Dockerfile ↓↓↓" >&2
     sed 's/^/  /' "$OVERLAY_DOCKERFILE" >&2
     echo "build-project-image: ↑↑↑" >&2

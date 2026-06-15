@@ -1,7 +1,7 @@
 package main
 
 // ProfileManifest models an agent profile bundle's manifest.yaml. A profile
-// is a directory under either `<workspace>/.ccr/agents/<name>/` (workspace
+// is a directory under either `<workspace>/.rp/agents/<name>/` (workspace
 // override) or `<repo>/agent.profiles/<name>/` (built-in). Each profile
 // describes one coding agent (Claude Code, OpenCode, etc.) the container
 // can run: how to install it, how to launch it, what env vars it needs.
@@ -184,7 +184,7 @@ func validEnvVarName(name string) bool {
 // ResolveProfile finds the profile bundle directory for `agentName`.
 //
 // Workspace overrides take precedence over built-ins. A workspace override
-// is recognized only if `<workspace>/.ccr/agents/<agentName>/manifest.yaml`
+// is recognized only if `<workspace>/.rp/agents/<agentName>/manifest.yaml`
 // exists; profile dirs lacking a manifest are treated as not-present (lint
 // reports them as partial overrides).
 //
@@ -198,7 +198,7 @@ func ResolveProfile(workspace, repoDir, agentName string) (string, string, error
 		return "", "", fmt.Errorf("resolve profile: %w", err)
 	}
 	if workspace != "" {
-		dir := filepath.Join(workspace, ".ccr", "agents", agentName)
+		dir := filepath.Join(workspace, ".rp", "agents", agentName)
 		if hasManifest(dir) {
 			return dir, "workspace", nil
 		}
@@ -209,7 +209,7 @@ func ResolveProfile(workspace, repoDir, agentName string) (string, string, error
 			return dir, "builtin", nil
 		}
 	}
-	return "", "", fmt.Errorf("resolve profile: no profile %q found in workspace .ccr/agents/ or builtin agent.profiles/", agentName)
+	return "", "", fmt.Errorf("resolve profile: no profile %q found in workspace .rp/agents/ or builtin agent.profiles/", agentName)
 }
 
 func hasManifest(dir string) bool {

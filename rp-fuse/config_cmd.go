@@ -1,7 +1,7 @@
 package main
 
 // The `config` subcommand lets shell scripts (Justfile recipes, ccr wrapper)
-// inspect .ccr/config.yaml without re-implementing the YAML parser.
+// inspect .rp/config.yaml without re-implementing the YAML parser.
 
 import (
 	"flag"
@@ -10,12 +10,12 @@ import (
 	"strings"
 )
 
-// runConfig is the entrypoint for `ccr-fuse config`.
+// runConfig is the entrypoint for `rp-fuse config`.
 func runConfig(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
-	configPath := fs.String("file", ".ccr/config.yaml", "path to .ccr/config.yaml")
+	configPath := fs.String("file", ".rp/config.yaml", "path to .rp/config.yaml")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: ccr-fuse config [--file <path>] <subcommand>")
+		fmt.Fprintln(os.Stderr, "Usage: rp-fuse config [--file <path>] <subcommand>")
 		fmt.Fprintln(os.Stderr, "Subcommands:")
 		fmt.Fprintln(os.Stderr, "  show      print resolved fields, one per line")
 		fmt.Fprintln(os.Stderr, "  validate  parse + validate; exit 0 on success, 1 on error")
@@ -32,7 +32,7 @@ func runConfig(args []string) {
 
 	cfg, err := ParseProjectConfig(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ccr-fuse config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rp-fuse config: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -46,17 +46,17 @@ func runConfig(args []string) {
 		return
 	case "field":
 		if fs.NArg() < 2 {
-			fmt.Fprintln(os.Stderr, "ccr-fuse config field: name required")
+			fmt.Fprintln(os.Stderr, "rp-fuse config field: name required")
 			os.Exit(2)
 		}
 		out, err := projectConfigField(cfg, fs.Arg(1))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ccr-fuse config field: %v\n", err)
+			fmt.Fprintf(os.Stderr, "rp-fuse config field: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println(out)
 	default:
-		fmt.Fprintf(os.Stderr, "ccr-fuse config: unknown subcommand %q\n", sub)
+		fmt.Fprintf(os.Stderr, "rp-fuse config: unknown subcommand %q\n", sub)
 		os.Exit(2)
 	}
 }

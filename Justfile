@@ -1,9 +1,23 @@
 set dotenv-load
 
 image := "claude-container"
-prefix := "claude-"
 host_dir := invocation_directory()
 host_name := file_name(invocation_directory())
+
+# Agent name for THIS workspace, used to disambiguate parallel containers
+# per agent on the same workspace. Resolves at every `just` invocation by
+# asking the rp-fuse host binary for the workspace's .rp/config.yaml agent
+# field (defaults to claude-code). Falls back to claude-code if the binary
+# does not exist yet (e.g. before `ccr build-host` on a fresh checkout).
+agent := shell(justfile_directory() + "/rp-fuse/rp-fuse-darwin-arm64 config --file " + invocation_directory() + "/.rp/config.yaml field agent 2>/dev/null || echo claude-code")
+
+# Container prefix is workspace-agent-specific:
+#   rp-<agent>-<basename>      e.g. rp-claude-code-myrepo, rp-opencode-myrepo
+prefix := "rp-" + agent + "-"
+
+# Generic prefix used by `list` to filter all rp-managed containers regardless
+# of which agent they were created with.
+list_prefix := "rp-"
 
 # Memory for the long-lived Apple Container builder VM. Effective only at
 # `container builder start` — once the builder is up, this is ignored.
@@ -52,34 +66,34 @@ builder-reset:
 
 # ── Image ─────────────────────────────────────────────────────────
 
-# Build ccr-base (minimal image with ccr-fuse + init script); see ADR-0006
+# Build rp-base (minimal image with rp-fuse + init script); see ADR-0006
 build-base: builder-ensure
     container build \
         -f {{justfile_directory()}}/Dockerfile.base \
-        -t ccr-base \
+        -t rp-base \
         {{justfile_directory()}}
 
-# Build the default claude-container image (ccr-base + Node/Python/R/DuckDB/just/Claude CLI)
+# Build the default claude-container image (rp-base + Node/Python/R/DuckDB/just/Claude CLI)
 build: build-base
     container build -t {{image}} {{justfile_directory()}}
 
-# Rebuild both ccr-base and claude-container from scratch, no cache.
+# Rebuild both rp-base and claude-container from scratch, no cache.
 rebuild: builder-ensure
     container build --no-cache \
         -f {{justfile_directory()}}/Dockerfile.base \
-        -t ccr-base \
+        -t rp-base \
         {{justfile_directory()}}
     container build --no-cache -t {{image}} {{justfile_directory()}}
 
-# Cross-build the host-side ccr-fuse binary (darwin/arm64), used by `ccr lint`
+# Cross-build the host-side rp-fuse binary (darwin/arm64), used by `ccr lint`
 build-host:
     container run --rm \
-        -v "{{justfile_directory()}}/ccr-fuse":/src \
+        -v "{{justfile_directory()}}/rp-fuse":/src \
         -w /src \
         -e GOOS=darwin -e GOARCH=arm64 -e CGO_ENABLED=0 \
         golang:1.22-alpine \
-        go build -o /src/ccr-fuse-darwin-arm64 -ldflags "-s -w" .
-    @echo "Built {{justfile_directory()}}/ccr-fuse/ccr-fuse-darwin-arm64"
+        go build -o /src/rp-fuse-darwin-arm64 -ldflags "-s -w" .
+    @echo "Built {{justfile_directory()}}/rp-fuse/rp-fuse-darwin-arm64"
 
 # ── Container lifecycle ───────────────────────────────────────────
 
@@ -92,23 +106,23 @@ _ensure name=host_name:
     if ! container list -a -q | grep -qx "{{prefix}}{{name}}"; then
         # build-project-image.sh always produces a tag: it overlays ccr-bits +
         # the configured agent profile onto the user's chosen base (image:,
-        # build:, .ccr/Dockerfile, or the global default).
+        # build:, .rp/Dockerfile, or the global default).
         IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
         eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
         container create \
             --name {{prefix}}{{name}} \
             --cap-add SYS_ADMIN \
             --user 0 \
-            -l "ccr.host_path={{host_dir}}" \
-            -l ccr.managed=true \
+            -l "rp.host_path={{host_dir}}" \
+            -l rp.managed=true \
             $CONTAINER_ENV \
             $CREATE_FLAGS \
             -v "{{host_dir}}:/workspace-real" \
             "$IMAGE_TAG" \
-            /usr/local/bin/ccr-init.sh > /dev/null
+            /usr/local/bin/rp-init.sh > /dev/null
         echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
     else
-        recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["ccr.host_path"] // empty')
+        recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
         if [ -n "$recorded" ] && [ "$recorded" != "{{host_dir}}" ]; then
             echo "ERROR: container {{prefix}}{{name}} is bound to: $recorded" >&2
             echo "       current directory is:               {{host_dir}}" >&2
@@ -137,14 +151,14 @@ create name=host_name *CONTAINER_ARGS:
         --name {{prefix}}{{name}} \
         --cap-add SYS_ADMIN \
         --user 0 \
-        -l "ccr.host_path={{host_dir}}" \
-        -l ccr.managed=true \
+        -l "rp.host_path={{host_dir}}" \
+        -l rp.managed=true \
         $CONTAINER_ENV \
         $CREATE_FLAGS \
         -v "{{host_dir}}:/workspace-real" \
         {{CONTAINER_ARGS}} \
         "$IMAGE_TAG" \
-        /usr/local/bin/ccr-init.sh
+        /usr/local/bin/rp-init.sh
     echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
 
 # Start a stopped container
@@ -167,11 +181,11 @@ shell name=host_name: (_ensure name)
 login name=host_name: (_ensure name)
     #!/usr/bin/env bash
     set -euo pipefail
-    if ! container exec -u coder {{prefix}}{{name}} test -x /usr/local/lib/ccr/login.sh 2>/dev/null; then
+    if ! container exec -u coder {{prefix}}{{name}} test -x /usr/local/lib/rp/login.sh 2>/dev/null; then
         echo "agent profile has no login flow" >&2
         exit 1
     fi
-    container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/login.sh
+    container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/login.sh
 
 # Run the agent. Default mode = bypass-permissions (the container is the
 # safety boundary). Pass --gated as the FIRST positional arg to dispatch to
@@ -179,10 +193,10 @@ login name=host_name: (_ensure name)
 run name=host_name *ARGS: (_ensure name)
     #!/usr/bin/env bash
     set -euo pipefail
-    script=/usr/local/lib/ccr/run.sh
+    script=/usr/local/lib/rp/run.sh
     args=( {{ARGS}} )
     if [ "${args[0]:-}" = "--gated" ]; then
-        script=/usr/local/lib/ccr/run-gated.sh
+        script=/usr/local/lib/rp/run-gated.sh
         args=( "${args[@]:1}" )
         if ! container exec -u coder {{prefix}}{{name}} test -x "$script" 2>/dev/null; then
             echo "agent profile is bypass-only (no run-gated.sh)" >&2
@@ -196,18 +210,18 @@ run name=host_name *ARGS: (_ensure name)
 claude name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run.sh -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run.sh -p "{{PROMPT}}"
     else
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run.sh
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run.sh
     fi
 
 # Run the agent in permission-gated mode. Deprecated — use `ccr run --gated`.
 claude-safe name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run-gated.sh -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run-gated.sh -p "{{PROMPT}}"
     else
-        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run-gated.sh
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/run-gated.sh
     fi
 
 # Copy files from host to container
@@ -232,9 +246,9 @@ list:
     set -uo pipefail
     {
         printf "NAME\tSTATUS\tWORKSPACE\n"
-        container list -a -q 2>/dev/null | grep "^{{prefix}}" 2>/dev/null | while read -r n; do
+        container list -a -q 2>/dev/null | grep "^{{list_prefix}}" 2>/dev/null | while read -r n; do
             container inspect "$n" 2>/dev/null \
-                | jq -r --arg n "$n" '.[0] | [$n, .status.state, (.configuration.labels["ccr.host_path"] // "-")] | @tsv'
+                | jq -r --arg n "$n" '.[0] | [$n, .status.state, (.configuration.labels["rp.host_path"] // "-")] | @tsv'
         done
     } | column -t -s $'\t'
 

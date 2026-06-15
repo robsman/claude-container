@@ -1,5 +1,5 @@
 #!/bin/sh
-# Glob-pattern integration test for ccr-fuse (gitignore semantics).
+# Glob-pattern integration test for rp-fuse (gitignore semantics).
 set -eu
 
 apk add --no-cache fuse3 >/dev/null 2>&1
@@ -28,7 +28,7 @@ mkdir -p "$HOST/secret-dir-at-root"
 echo "ok" > "$HOST/secret-dir-at-root/x"
 echo "elsewhere-x" > "$HOST/packages/lib-a/secret-dir-at-root" 2>/dev/null || true
 
-mkdir -p "$HOST/.ccr" && cat > "$HOST/.ccr/shadow" <<'EOF'
+mkdir -p "$HOST/.rp" && cat > "$HOST/.rp/shadow" <<'EOF'
 # gitignore-style patterns
 node_modules
 *.log
@@ -37,7 +37,7 @@ node_modules
 /secret
 EOF
 
-/tools/ccr-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.ccr/shadow" --cache 0.1 &
+/tools/rp-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.rp/shadow" --cache 0.1 &
 FPID=$!
 for i in 1 2 3 4 5 10; do mountpoint -q "$MNT" && break; sleep 0.2; done
 mountpoint -q "$MNT" || { echo FAIL; exit 1; }

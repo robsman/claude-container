@@ -27,7 +27,7 @@ import (
 //
 // Match is two-tier:
 //   1. Literal fast-path: O(1) hash lookup against unanchored basenames and anchored paths.
-//      Most real-world .ccr/shadow patterns are literals (node_modules, .env.local, ...).
+//      Most real-world .rp/shadow patterns are literals (node_modules, .env.local, ...).
 //   2. Glob fallback: go-gitignore regex match for patterns containing *, ?, or [.
 //
 // HostNode never calls Match on paths whose ancestors already matched a rule (those
@@ -40,7 +40,7 @@ type Rules struct {
 	patterns   []string          // raw rule strings; for logging only
 }
 
-// ParseRulesFile reads a .ccr/shadow file. Missing file = empty rules.
+// ParseRulesFile reads a .rp/shadow file. Missing file = empty rules.
 func ParseRulesFile(path string) (*Rules, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -72,11 +72,11 @@ func parseRulesReader(r io.Reader) (*Rules, error) {
 			continue
 		}
 		if strings.HasPrefix(trim, "!") {
-			log.Printf("ccr-fuse: skipping negation pattern (unsupported): %q", trim)
+			log.Printf("rp-fuse: skipping negation pattern (unsupported): %q", trim)
 			continue
 		}
 		if err := validatePattern(trim); err != nil {
-			log.Printf("ccr-fuse: skipping invalid pattern %q: %v", trim, err)
+			log.Printf("rp-fuse: skipping invalid pattern %q: %v", trim, err)
 			continue
 		}
 		out.patterns = append(out.patterns, trim)

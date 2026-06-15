@@ -118,7 +118,7 @@ func TestResolveContext_Default(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(ws, ".ccr")
+	want := filepath.Join(ws, ".rp")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -161,7 +161,7 @@ func TestResolveDockerfile_InContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(ws, ".ccr", "Dockerfile.dev")
+	want := filepath.Join(ws, ".rp", "Dockerfile.dev")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -177,7 +177,7 @@ func TestResolveDockerfile_EscapeRejected(t *testing.T) {
 }
 
 func TestParseProjectConfig_MissingFile(t *testing.T) {
-	cfg, err := ParseProjectConfig("/nonexistent/.ccr/config.yaml")
+	cfg, err := ParseProjectConfig("/nonexistent/.rp/config.yaml")
 	if err != nil {
 		t.Fatalf("missing file should not error: %v", err)
 	}

@@ -3,7 +3,7 @@ projects/
 .DS_Store
 .claude/
 
-# Locally-built ccr-fuse binaries (built into the image via multi-stage Dockerfile,
+# Locally-built rp-fuse binaries (built into the image via multi-stage Dockerfile,
 # and cross-built for the host to power `ccr lint`).
-ccr-fuse/ccr-fuse
-ccr-fuse/ccr-fuse-darwin-arm64
+rp-fuse/rp-fuse
+rp-fuse/rp-fuse-darwin-arm64

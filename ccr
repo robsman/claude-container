@@ -40,11 +40,11 @@ if [[ "$1" == "--recipes" ]]; then
     exit 0
 fi
 
-# `ccr lint` runs the host-side ccr-fuse binary against the .ccr/shadow in the
+# `ccr lint` runs the host-side rp-fuse binary against the .rp/shadow in the
 # caller's cwd. No container start required.
 if [[ "$1" == "lint" ]]; then
     shift
-    HOST_BIN="$CLAUDE_CONTAINER_DIR/ccr-fuse/ccr-fuse-darwin-arm64"
+    HOST_BIN="$CLAUDE_CONTAINER_DIR/rp-fuse/rp-fuse-darwin-arm64"
     if [[ ! -x "$HOST_BIN" ]]; then
         echo "ccr lint: host binary missing at $HOST_BIN" >&2
         echo "Run 'ccr build-host' to cross-build it (one-time setup)." >&2

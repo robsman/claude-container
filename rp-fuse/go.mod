@@ -1,4 +1,4 @@
-module ccr-fuse
+module rp-fuse
 
 go 1.22
 

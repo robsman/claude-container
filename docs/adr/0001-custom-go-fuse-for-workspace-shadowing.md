@@ -1,6 +1,6 @@
 # Custom Go FUSE for workspace shadowing
 
-`ccr-fuse` is a custom Go FUSE driver built on `hanwen/go-fuse`'s `LoopbackNode`, rather than using kernel `overlayfs`, `fuse-overlayfs`, or per-path bind mounts. Reasons:
+`rp-fuse` is a custom Go FUSE driver built on `hanwen/go-fuse`'s `LoopbackNode`, rather than using kernel `overlayfs`, `fuse-overlayfs`, or per-path bind mounts. Reasons:
 
 - **Bind mounts can't hide a directory entry from `readdir`**, only its content. Required a separate filesystem layer to make shadowed paths truly invisible to the container by default.
 - **Bind mounts on the workspace bidirectionally share directory creations** — creating a shadow mount-point on the container side leaks an empty stub directory to the host bind. We need zero host artifacts.

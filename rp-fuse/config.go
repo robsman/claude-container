@@ -1,6 +1,6 @@
 package main
 
-// ProjectConfig models the per-workspace .ccr/config.yaml file. Field names
+// ProjectConfig models the per-workspace .rp/config.yaml file. Field names
 // mirror docker-compose service-level keys (image, build, user) but the file
 // is NOT a docker-compose.yml — there is no services: wrapper and only the
 // subset documented in ADR-0006 is honored. Unknown / not-yet-supported keys
@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ProjectConfig is the parsed contents of `.ccr/config.yaml`. All fields are
+// ProjectConfig is the parsed contents of `.rp/config.yaml`. All fields are
 // optional; a fully empty config is valid and means "use the default base
 // image with the coder user and the claude-code agent profile".
 type ProjectConfig struct {
@@ -30,7 +30,7 @@ type ProjectConfig struct {
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
 }
 
-// DefaultAgent is the profile used when .ccr/config.yaml does not set `agent:`.
+// DefaultAgent is the profile used when .rp/config.yaml does not set `agent:`.
 const DefaultAgent = "claude-code"
 
 // AgentName returns the configured agent, falling back to DefaultAgent.
@@ -43,7 +43,7 @@ func (c *ProjectConfig) AgentName() string {
 
 // BuildSpec holds the parameters for locally building a project image.
 // Context is a path relative to the directory containing config.yaml
-// (i.e. .ccr/) and is resolved + validated to stay inside the workspace.
+// (i.e. .rp/) and is resolved + validated to stay inside the workspace.
 type BuildSpec struct {
 	Context    string            `yaml:"context,omitempty"`
 	Dockerfile string            `yaml:"dockerfile,omitempty"`
@@ -58,14 +58,14 @@ type ResourceSpec struct {
 	CPUs int `yaml:"cpus,omitempty"`
 }
 
-// FuseSpec maps onto ccr-fuse runtime flags.
+// FuseSpec maps onto rp-fuse runtime flags.
 type FuseSpec struct {
-	// Cache is the attr/entry/negative cache TTL in seconds (ccr-fuse --cache).
+	// Cache is the attr/entry/negative cache TTL in seconds (rp-fuse --cache).
 	// Pointer so we can distinguish "unset" (use default 1.0s) from "0.0".
 	Cache *float64 `yaml:"cache,omitempty"`
 }
 
-// ParseProjectConfig reads and validates .ccr/config.yaml. A missing file
+// ParseProjectConfig reads and validates .rp/config.yaml. A missing file
 // yields an empty *ProjectConfig and no error.
 func ParseProjectConfig(path string) (*ProjectConfig, error) {
 	data, err := os.ReadFile(path)
@@ -223,7 +223,7 @@ func (c *ProjectConfig) HasImageSource() bool {
 
 // ResolveContext converts a config-relative `build.context` path into an
 // absolute path on disk. The workspaceRoot argument is the absolute path of
-// the workspace directory (the parent of .ccr/). The resolved path must stay
+// the workspace directory (the parent of .rp/). The resolved path must stay
 // inside workspaceRoot; absolute paths and `..`-escapes return an error.
 func (c *ProjectConfig) ResolveContext(workspaceRoot string) (string, error) {
 	if c.Build == nil {
@@ -236,8 +236,8 @@ func (c *ProjectConfig) ResolveContext(workspaceRoot string) (string, error) {
 	if filepath.IsAbs(rel) {
 		return "", fmt.Errorf("build.context %q: absolute paths not allowed", rel)
 	}
-	// Config lives at .ccr/config.yaml; context paths are relative to .ccr/.
-	configDir := filepath.Join(workspaceRoot, ".ccr")
+	// Config lives at .rp/config.yaml; context paths are relative to .rp/.
+	configDir := filepath.Join(workspaceRoot, ".rp")
 	candidate := filepath.Clean(filepath.Join(configDir, rel))
 	wsClean := filepath.Clean(workspaceRoot)
 	if candidate != wsClean && !strings.HasPrefix(candidate, wsClean+string(filepath.Separator)) {

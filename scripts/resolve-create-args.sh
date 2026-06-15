@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# resolve-create-args.sh — translate .ccr/config.yaml + agent profile into
-# extra args for `container create` and env-var lines for ccr-init.sh.
+# resolve-create-args.sh — translate .rp/config.yaml + agent profile into
+# extra args for `container create` and env-var lines for rp-init.sh.
 #
 # Usage:
 #   eval "$(scripts/resolve-create-args.sh <workspace-dir>)"
@@ -20,10 +20,10 @@ if [ "$#" -ne 1 ]; then
 fi
 
 WORKSPACE=$1
-CONFIG="$WORKSPACE/.ccr/config.yaml"
+CONFIG="$WORKSPACE/.rp/config.yaml"
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
-CCR_FUSE="$REPO_DIR/ccr-fuse/ccr-fuse-darwin-arm64"
+CCR_FUSE="$REPO_DIR/rp-fuse/rp-fuse-darwin-arm64"
 
 CREATE_FLAGS=""
 CONTAINER_ENV=""
@@ -39,14 +39,14 @@ if [ -x "$CCR_FUSE" ] && [ -f "$CONFIG" ]; then
     fi
     cache=$("$CCR_FUSE" config --file "$CONFIG" field fuse.cache 2>/dev/null || true)
     if [ -n "$cache" ]; then
-        CONTAINER_ENV="$CONTAINER_ENV -e CCR_CACHE=$cache"
+        CONTAINER_ENV="$CONTAINER_ENV -e RP_CACHE=$cache"
     fi
 fi
 
-# Forward CCR_DEBUG if set in the host shell. Lets the user diagnose a
-# specific session without baking debug into config: `CCR_DEBUG=1 ccr run`.
-if [ "${CCR_DEBUG:-}" = "1" ]; then
-    CONTAINER_ENV="$CONTAINER_ENV -e CCR_DEBUG=1"
+# Forward RP_DEBUG if set in the host shell. Lets the user diagnose a
+# specific session without baking debug into config: `RP_DEBUG=1 ccr run`.
+if [ "${RP_DEBUG:-}" = "1" ]; then
+    CONTAINER_ENV="$CONTAINER_ENV -e RP_DEBUG=1"
 fi
 
 # Forward each env var declared in the agent profile's manifest. Missing

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Edge-case integration tests for ccr-fuse.
+# Edge-case integration tests for rp-fuse.
 set -eu
 
 apk add --no-cache fuse3 >/dev/null 2>&1
@@ -19,7 +19,7 @@ ln -s "$HOST/.aws/credentials" "$HOST/cred-link" 2>/dev/null || true
 # A host file at a rule path that we want hidden — verify it stays hidden via symlink
 ln -s nonexistent-target "$HOST/.env.local-link" 2>/dev/null || true
 
-mkdir -p "$HOST/.ccr" && cat > "$HOST/.ccr/shadow" <<EOF
+mkdir -p "$HOST/.rp" && cat > "$HOST/.rp/shadow" <<EOF
 .env.local
 node_modules
 .aws/credentials
@@ -28,7 +28,7 @@ deep/nested/secret
 .env.local-link
 EOF
 
-/tools/ccr-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.ccr/shadow" --cache 0.1 &
+/tools/rp-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.rp/shadow" --cache 0.1 &
 FPID=$!
 for i in 1 2 3 4 5 10; do mountpoint -q "$MNT" && break; sleep 0.2; done
 mountpoint -q "$MNT" || { echo FAIL; exit 1; }

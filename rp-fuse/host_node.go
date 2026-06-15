@@ -47,7 +47,7 @@ func joinRel(parent, name string) string {
 // rulesFileName is the workspace-relative path of the shadow rules file. Writes
 // to this path from inside the container are rejected with EROFS — only the
 // host is allowed to modify the ruleset.
-const rulesFileName = ".ccr/shadow"
+const rulesFileName = ".rp/shadow"
 
 func isWriteAccess(flags uint32) bool {
 	mode := int(flags) & syscall.O_ACCMODE
@@ -138,9 +138,9 @@ func (n *HostNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	return fs.NewListDirStream(entries), 0
 }
 
-// --- .ccr/shadow read-only enforcement ---
+// --- .rp/shadow read-only enforcement ---
 
-// Open: writes to .ccr/shadow return EROFS; container cannot modify the ruleset.
+// Open: writes to .rp/shadow return EROFS; container cannot modify the ruleset.
 func (n *HostNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	if n.relPath() == rulesFileName && isWriteAccess(flags) {
 		return nil, 0, syscall.EROFS
@@ -148,7 +148,7 @@ func (n *HostNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint3
 	return n.LoopbackNode.Open(ctx, flags)
 }
 
-// Setattr: chmod, chown, truncate, etc. on .ccr/shadow return EROFS.
+// Setattr: chmod, chown, truncate, etc. on .rp/shadow return EROFS.
 func (n *HostNode) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
 	if n.relPath() == rulesFileName {
 		return syscall.EROFS
@@ -263,7 +263,7 @@ func (n *HostNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 // Rename: same-region only. Cross-region returns EXDEV. Rename touching
-// .ccr/shadow on either side returns EROFS (only the host can modify the rules).
+// .rp/shadow on either side returns EROFS (only the host can modify the rules).
 func (n *HostNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
 	srcRel := joinRel(n.relPath(), name)
 

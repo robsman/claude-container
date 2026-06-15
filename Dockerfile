@@ -1,10 +1,10 @@
 # claude-container — default per-project base image. Used when a workspace
-# has no `.ccr/Dockerfile` and no `.ccr/config.yaml` `image:` / `build:` line.
+# has no `.rp/Dockerfile` and no `.rp/config.yaml` `image:` / `build:` line.
 # Carries the toolchain (Node, Python+uv, R, DuckDB, just, build-essential)
 # but NO agent — agent profiles are installed by the ccr overlay at create
 # time, so the same default image works for claude-code, opencode, etc.
 
-FROM ccr-base
+FROM rp-base
 
 USER root
 
@@ -40,7 +40,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash 
 # ── Image-toolchain fragment describing what's installed above. The ──
 # ── overlay concatenates it with 00-container.md + the agent profile  ──
 # ── into the agent's instruction file.                                ──
-COPY config/10-toolchain-default.md /etc/ccr/instructions/10-toolchain.md
+COPY config/10-toolchain-default.md /etc/rp/instructions/10-toolchain.md
 
 USER coder
 WORKDIR /home/coder

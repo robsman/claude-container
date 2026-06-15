@@ -1,30 +1,39 @@
-# Example .ccr/config.yaml
+# Example .rp/config.yaml
 #
-# Copy this to your project's `.ccr/config.yaml` to customize the container
+# Copy this to your project's `.rp/config.yaml` to customize the container
 # image. Both `image:` and `build:` are optional; an empty/missing file means
 # "use the default claude-container image" (Node 22 + Python+uv + R + DuckDB +
-# Claude CLI). See docs/adr/0006-per-project-images-with-ccr-overlay.md for
+# Claude CLI). See docs/adr/0006-per-project-images-with-rp-overlay.md for
 # the full design.
 #
 # Pick ONE of `image:` or `build:`. Setting both is a config error.
+
+# ── Agent profile ──────────────────────────────────────────────────
+# Which coding agent the container runs. Defaults to claude-code. Looked up
+# in <repo>/agent.profiles/<name>/ first, then in this workspace's
+# .rp/agents/<name>/. Drop a manifest.yaml in .rp/agents/<name>/ to override
+# or define a new agent without patching ccr.
+#
+# agent: claude-code
+# agent: opencode
 
 # ── Option 1: pull a pre-built image ───────────────────────────────
 # image: python:3.12-slim-bookworm
 # image: ghcr.io/your-org/devtools:v1.4
 
 # ── Option 2: build locally from a Dockerfile ─────────────────────
-# `context` defaults to `.` (= the .ccr/ directory), so by default
-# only files inside .ccr/ are available to COPY. Set `context: ..` to
+# `context` defaults to `.` (= the .rp/ directory), so by default
+# only files inside .rp/ are available to COPY. Set `context: ..` to
 # use the workspace root as build context.
 #
 # build:
-#   context: .                    # relative to .ccr/
+#   context: .                    # relative to .rp/
 #   dockerfile: Dockerfile        # relative to context
 #   args:
 #     NODE_VERSION: "22"
 
 # ── Option 3: shortcut ─────────────────────────────────────────────
-# If you only need to build a custom Dockerfile, drop it at .ccr/Dockerfile
+# If you only need to build a custom Dockerfile, drop it at .rp/Dockerfile
 # and skip this config file entirely. ccr will detect it automatically.
 
 # ── Container user ─────────────────────────────────────────────────
@@ -46,7 +55,7 @@
 #   memory: 4G
 #   cpus: 2
 
-# ── ccr-fuse runtime tuning ────────────────────────────────────────
+# ── rp-fuse runtime tuning ────────────────────────────────────────
 # Cache TTL for the FUSE attr/entry/negative cache, in seconds. Default 1.0.
 # Lower values pick up host-side edits faster but increase FUSE syscall
 # overhead. Raising it speeds large dir walks (e.g. claude indexing) at the

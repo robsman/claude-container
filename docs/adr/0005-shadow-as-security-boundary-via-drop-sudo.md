@@ -3,8 +3,8 @@
 The shadow mechanism is promoted from "ergonomic isolation" to a real security boundary against in-container code. Concretely:
 
 - **`coder` user loses passwordless sudo.** The Dockerfile no longer grants `coder ALL=(ALL) NOPASSWD:ALL`.
-- **`ccr-init.sh` hides `/workspace-real` from the container's mount namespace.** Before `ccr-fuse` starts, init binds `/workspace-real` → `/var/lib/ccr/backing` (root-only, mode `0700`) and overlays a tmpfs on `/workspace-real` so default container view shows it empty.
-- **`/var/lib/ccr/` is `0700 root:root`.** `coder` cannot traverse it, so symlinks crafted to escape into the backing path get EACCES.
+- **`rp-init.sh` hides `/workspace-real` from the container's mount namespace.** Before `rp-fuse` starts, init binds `/workspace-real` → `/var/lib/rp/backing` (root-only, mode `0700`) and overlays a tmpfs on `/workspace-real` so default container view shows it empty.
+- **`/var/lib/rp/` is `0700 root:root`.** `coder` cannot traverse it, so symlinks crafted to escape into the backing path get EACCES.
 
 Verified by spike (2026-06-13): a `coder` exec'd process has `CapInh = CapPrm = CapEff = 0`. `umount` on the tmpfs returns EPERM. The backing bind is not visible to the user.
 

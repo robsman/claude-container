@@ -1,5 +1,5 @@
 #!/bin/sh
-# Functional test for rule-aware ccr-fuse.
+# Functional test for rule-aware rp-fuse.
 set -eu
 
 apk add --no-cache fuse3 >/dev/null 2>&1
@@ -22,7 +22,7 @@ mkdir -p "$HOST/node_modules"
 echo "real-pkg" > "$HOST/node_modules/pre-existing"
 
 # Rules file
-mkdir -p "$HOST/.ccr" && cat > "$HOST/.ccr/shadow" <<EOF
+mkdir -p "$HOST/.rp" && cat > "$HOST/.rp/shadow" <<EOF
 .env.local
 node_modules
 .aws/credentials
@@ -33,7 +33,7 @@ find "$HOST" -type f -o -type d | sort
 echo
 
 # Launch
-/tools/ccr-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.ccr/shadow" &
+/tools/rp-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.rp/shadow" &
 FPID=$!
 for i in 1 2 3 4 5 10; do mountpoint -q "$MNT" && break; sleep 0.2; done
 mountpoint -q "$MNT" || { echo FAIL; exit 1; }

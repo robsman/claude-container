@@ -177,7 +177,7 @@ func TestResolveProfile_WorkspaceWins(t *testing.T) {
 	repo := t.TempDir()
 	writeManifest(t, filepath.Join(repo, "agent.profiles", "claude-code", "manifest.yaml"), "name: claude-code\n")
 	ws := t.TempDir()
-	writeManifest(t, filepath.Join(ws, ".ccr", "agents", "claude-code", "manifest.yaml"), "name: claude-code\n")
+	writeManifest(t, filepath.Join(ws, ".rp", "agents", "claude-code", "manifest.yaml"), "name: claude-code\n")
 
 	dir, source, err := ResolveProfile(ws, repo, "claude-code")
 	if err != nil {
@@ -186,7 +186,7 @@ func TestResolveProfile_WorkspaceWins(t *testing.T) {
 	if source != "workspace" {
 		t.Errorf("source = %q, want workspace", source)
 	}
-	if dir != filepath.Join(ws, ".ccr", "agents", "claude-code") {
+	if dir != filepath.Join(ws, ".rp", "agents", "claude-code") {
 		t.Errorf("dir = %q", dir)
 	}
 }
@@ -198,10 +198,10 @@ func TestResolveProfile_WorkspaceDirWithoutManifestIgnored(t *testing.T) {
 	repo := t.TempDir()
 	writeManifest(t, filepath.Join(repo, "agent.profiles", "claude-code", "manifest.yaml"), "name: claude-code\n")
 	ws := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(ws, ".ccr", "agents", "claude-code"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, ".rp", "agents", "claude-code"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ws, ".ccr", "agents", "claude-code", "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(ws, ".rp", "agents", "claude-code", "run.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 

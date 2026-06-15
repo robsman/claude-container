@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// LintEntry is one diagnosed line from a .ccr/shadow file.
+// LintEntry is one diagnosed line from a .rp/shadow file.
 type LintEntry struct {
 	Line    int    // 1-based source line number
 	Raw     string // raw pattern as written, trimmed of whitespace
@@ -20,10 +20,10 @@ type LintEntry struct {
 	Message string // human-readable note when status != ok
 }
 
-// runLint is the entrypoint for `ccr-fuse lint`.
+// runLint is the entrypoint for `rp-fuse lint`.
 //
-// Default behavior: lints `.ccr/shadow` (the rules file) AND validates
-// `.ccr/config.yaml` if it exists. Either file is optional; an empty
+// Default behavior: lints `.rp/shadow` (the rules file) AND validates
+// `.rp/config.yaml` if it exists. Either file is optional; an empty
 // workspace is a no-op success. An explicit shadow path argument turns
 // off the config.yaml side and lints only the named file.
 //
@@ -35,15 +35,15 @@ func runLint(args []string) {
 	workspace := fs.String("workspace", ".", "workspace directory (default: current dir)")
 	repoDir := fs.String("repo-dir", "", "claude-container repo dir (skips profile lint if empty)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: ccr-fuse lint [--match <path>] [--workspace <ws>] [--repo-dir <repo>] [<.ccr/shadow file>]")
-		fmt.Fprintln(os.Stderr, "  Default: lints .ccr/shadow, validates .ccr/config.yaml, and resolves the agent profile.")
+		fmt.Fprintln(os.Stderr, "Usage: rp-fuse lint [--match <path>] [--workspace <ws>] [--repo-dir <repo>] [<.rp/shadow file>]")
+		fmt.Fprintln(os.Stderr, "  Default: lints .rp/shadow, validates .rp/config.yaml, and resolves the agent profile.")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
 
 	exitCode := 0
 
-	shadowPath := filepath.Join(*workspace, ".ccr", "shadow")
+	shadowPath := filepath.Join(*workspace, ".rp", "shadow")
 	explicit := fs.NArg() > 0
 	if explicit {
 		shadowPath = fs.Arg(0)
@@ -52,7 +52,7 @@ func runLint(args []string) {
 	hadShadow := lintShadow(shadowPath, *matchPath, explicit, &exitCode)
 
 	if !explicit {
-		configPath := filepath.Join(*workspace, ".ccr", "config.yaml")
+		configPath := filepath.Join(*workspace, ".rp", "config.yaml")
 		hadConfig := false
 		var cfg *ProjectConfig
 		if _, err := os.Stat(configPath); err == nil {
@@ -79,9 +79,9 @@ func runLint(args []string) {
 	}
 }
 
-// lintShadow lints a single .ccr/shadow file. Returns true if the file
+// lintShadow lints a single .rp/shadow file. Returns true if the file
 // existed and was processed. `explicit` distinguishes "user passed a path"
-// from "default-discover at .ccr/shadow" — the former errors on missing
+// from "default-discover at .rp/shadow" — the former errors on missing
 // file, the latter falls through silently.
 func lintShadow(path, matchPath string, explicit bool, exitCode *int) bool {
 	f, err := os.Open(path)
@@ -89,7 +89,7 @@ func lintShadow(path, matchPath string, explicit bool, exitCode *int) bool {
 		if os.IsNotExist(err) && !explicit {
 			return false
 		}
-		fmt.Fprintf(os.Stderr, "ccr-fuse lint: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rp-fuse lint: %v\n", err)
 		*exitCode = 2
 		return false
 	}
@@ -97,7 +97,7 @@ func lintShadow(path, matchPath string, explicit bool, exitCode *int) bool {
 
 	entries, err := lintReader(f)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ccr-fuse lint: read %s: %v\n", path, err)
+		fmt.Fprintf(os.Stderr, "rp-fuse lint: read %s: %v\n", path, err)
 		*exitCode = 2
 		return false
 	}
@@ -144,7 +144,7 @@ func lintShadow(path, matchPath string, explicit bool, exitCode *int) bool {
 	return true
 }
 
-// lintConfig parses .ccr/config.yaml and prints a short summary line.
+// lintConfig parses .rp/config.yaml and prints a short summary line.
 // Returns the parsed config (nil on parse error) so the caller can re-use
 // the agent name for profile lint.
 func lintConfig(path string, exitCode *int) *ProjectConfig {
@@ -196,7 +196,7 @@ func lintConfig(path string, exitCode *int) *ProjectConfig {
 // overrides + host env vars declared but unset.
 func lintProfile(workspace, repoDir, agent string, cfg *ProjectConfig, exitCode *int) {
 	// Detect partial workspace override: directory exists, manifest.yaml missing.
-	wsDir := filepath.Join(workspace, ".ccr", "agents", agent)
+	wsDir := filepath.Join(workspace, ".rp", "agents", agent)
 	if info, err := os.Stat(wsDir); err == nil && info.IsDir() {
 		if _, err := os.Stat(filepath.Join(wsDir, "manifest.yaml")); err != nil {
 			fmt.Printf("agent profile %s: WARN partial workspace override at %s lacks manifest.yaml; falling through to builtin\n", agent, wsDir)
@@ -275,7 +275,7 @@ func describe(e LintEntry) string {
 	return e.Class
 }
 
-// lintReader walks the .ccr/shadow content and classifies each non-empty
+// lintReader walks the .rp/shadow content and classifies each non-empty
 // line. Errors and warnings do not abort — they show up as entries with
 // their own Status. Returns I/O errors from the scanner.
 func lintReader(r io.Reader) ([]LintEntry, error) {

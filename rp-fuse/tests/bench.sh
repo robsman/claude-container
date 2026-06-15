@@ -26,8 +26,8 @@ total=$(find "$DATA/synthetic" -type f | wc -l)
 echo "files: $total"
 du -sh "$DATA/synthetic" 2>&1 | head -1
 
-# launch ccr-fuse
-/tools/ccr-fuse --backing "$DATA" --mount "$MNT" &
+# launch rp-fuse
+/tools/rp-fuse --backing "$DATA" --mount "$MNT" &
 FPID=$!
 for i in 1 2 3 4 5 10; do
   mountpoint -q "$MNT" && break

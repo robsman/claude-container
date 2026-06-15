@@ -78,13 +78,61 @@ func (n *HostNode) shadowPath(rel string) string {
 }
 
 // ensureShadowParent creates the shadow parent directory (recursively) for a
-// to-be-created rule-matched child. No-op if it already exists.
-func (n *HostNode) ensureShadowParent(childRel string) error {
+// to-be-created rule-matched child. No-op if it already exists. Each newly-
+// created intermediate is chowned to the FUSE caller so that subsequent
+// caller-owned operations (fchmod, chmod, rmdir) don't get EPERM from the
+// kernel's permission check.
+func (n *HostNode) ensureShadowParent(ctx context.Context, childRel string) error {
 	parent := filepath.Dir(childRel)
 	if parent == "." || parent == "" {
 		return nil
 	}
-	return os.MkdirAll(n.shadowPath(parent), 0o755)
+	// Walk up the chain, mkdir each missing component, and chown it to the
+	// caller. We can't use os.MkdirAll here because it doesn't tell us which
+	// components it created, so we'd over-chown existing dirs.
+	full := n.shadowPath(parent)
+	var toCreate []string
+	for cur := full; cur != n.cfg.ShadowRoot.Path && cur != "/" && cur != "."; cur = filepath.Dir(cur) {
+		if _, err := os.Stat(cur); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		toCreate = append(toCreate, cur)
+	}
+	// Create in root-to-leaf order.
+	for i := len(toCreate) - 1; i >= 0; i-- {
+		if err := os.Mkdir(toCreate[i], 0o755); err != nil && !os.IsExist(err) {
+			return err
+		}
+		chownToCaller(ctx, toCreate[i])
+	}
+	return nil
+}
+
+// chownToCaller chowns the given path to the FUSE caller's uid/gid. Used after
+// shadow-side create operations so the file/dir ends up owned by the user that
+// triggered the FUSE op (rather than the FUSE driver process, which runs as
+// root). Without this, the kernel rejects subsequent caller-owned operations
+// (fchmod, fchown, rmdir from non-empty dir) with EPERM before the request
+// ever reaches FUSE. Silently no-ops if there's no Caller in the context
+// (initial mount setup, internal calls).
+func chownToCaller(ctx context.Context, path string) {
+	caller, ok := fuse.FromContext(ctx)
+	if !ok || caller == nil {
+		return
+	}
+	_ = syscall.Lchown(path, int(caller.Uid), int(caller.Gid))
+}
+
+// fchownToCaller is the FD-based variant for callers that already have the fd
+// open (e.g. straight after syscall.Open with O_CREAT).
+func fchownToCaller(ctx context.Context, fd int) {
+	caller, ok := fuse.FromContext(ctx)
+	if !ok || caller == nil {
+		return
+	}
+	_ = syscall.Fchown(fd, int(caller.Uid), int(caller.Gid))
 }
 
 func (n *HostNode) shadowChild(ctx context.Context, rel string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -182,13 +230,14 @@ func (n *HostNode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 		return nil, syscall.EROFS
 	}
 	if n.cfg.Rules.Match(childRel) {
-		if err := n.ensureShadowParent(childRel); err != nil {
+		if err := n.ensureShadowParent(ctx, childRel); err != nil {
 			return nil, fs.ToErrno(err)
 		}
 		p := n.shadowPath(childRel)
 		if err := os.Mkdir(p, os.FileMode(mode)); err != nil {
 			return nil, fs.ToErrno(err)
 		}
+		chownToCaller(ctx, p)
 		return n.shadowChild(ctx, childRel, out)
 	}
 	return n.LoopbackNode.Mkdir(ctx, name, mode, out)
@@ -200,7 +249,7 @@ func (n *HostNode) Create(ctx context.Context, name string, flags uint32, mode u
 		return nil, nil, 0, syscall.EROFS
 	}
 	if n.cfg.Rules.Match(childRel) {
-		if err := n.ensureShadowParent(childRel); err != nil {
+		if err := n.ensureShadowParent(ctx, childRel); err != nil {
 			return nil, nil, 0, fs.ToErrno(err)
 		}
 		p := n.shadowPath(childRel)
@@ -209,6 +258,7 @@ func (n *HostNode) Create(ctx context.Context, name string, flags uint32, mode u
 		if err != nil {
 			return nil, nil, 0, fs.ToErrno(err)
 		}
+		fchownToCaller(ctx, fd)
 		var st syscall.Stat_t
 		if err := syscall.Fstat(fd, &st); err != nil {
 			syscall.Close(fd)
@@ -228,13 +278,14 @@ func (n *HostNode) Symlink(ctx context.Context, target, name string, out *fuse.E
 		return nil, syscall.EROFS
 	}
 	if n.cfg.Rules.Match(childRel) {
-		if err := n.ensureShadowParent(childRel); err != nil {
+		if err := n.ensureShadowParent(ctx, childRel); err != nil {
 			return nil, fs.ToErrno(err)
 		}
 		p := n.shadowPath(childRel)
 		if err := syscall.Symlink(target, p); err != nil {
 			return nil, fs.ToErrno(err)
 		}
+		chownToCaller(ctx, p)
 		return n.shadowChild(ctx, childRel, out)
 	}
 	return n.LoopbackNode.Symlink(ctx, target, name, out)
@@ -246,13 +297,14 @@ func (n *HostNode) Mknod(ctx context.Context, name string, mode, rdev uint32, ou
 		return nil, syscall.EROFS
 	}
 	if n.cfg.Rules.Match(childRel) {
-		if err := n.ensureShadowParent(childRel); err != nil {
+		if err := n.ensureShadowParent(ctx, childRel); err != nil {
 			return nil, fs.ToErrno(err)
 		}
 		p := n.shadowPath(childRel)
 		if err := syscall.Mknod(p, mode, int(rdev)); err != nil {
 			return nil, fs.ToErrno(err)
 		}
+		chownToCaller(ctx, p)
 		return n.shadowChild(ctx, childRel, out)
 	}
 	return n.LoopbackNode.Mknod(ctx, name, mode, rdev, out)
@@ -322,6 +374,7 @@ func (n *ShadowNode) Mkdir(ctx context.Context, name string, mode uint32, out *f
 	if err := syscall.Mkdir(p, mode); err != nil {
 		return nil, fs.ToErrno(err)
 	}
+	chownToCaller(ctx, p)
 	var st syscall.Stat_t
 	if err := syscall.Lstat(p, &st); err != nil {
 		return nil, fs.ToErrno(err)
@@ -337,6 +390,7 @@ func (n *ShadowNode) Create(ctx context.Context, name string, flags uint32, mode
 	if err != nil {
 		return nil, nil, 0, fs.ToErrno(err)
 	}
+	fchownToCaller(ctx, fd)
 	var st syscall.Stat_t
 	if err := syscall.Fstat(fd, &st); err != nil {
 		syscall.Close(fd)
@@ -351,6 +405,7 @@ func (n *ShadowNode) Symlink(ctx context.Context, target, name string, out *fuse
 	if err := syscall.Symlink(target, p); err != nil {
 		return nil, fs.ToErrno(err)
 	}
+	chownToCaller(ctx, p)
 	var st syscall.Stat_t
 	if err := syscall.Lstat(p, &st); err != nil {
 		return nil, fs.ToErrno(err)
@@ -364,6 +419,7 @@ func (n *ShadowNode) Mknod(ctx context.Context, name string, mode, rdev uint32, 
 	if err := syscall.Mknod(p, mode, int(rdev)); err != nil {
 		return nil, fs.ToErrno(err)
 	}
+	chownToCaller(ctx, p)
 	var st syscall.Stat_t
 	if err := syscall.Lstat(p, &st); err != nil {
 		return nil, fs.ToErrno(err)
@@ -393,7 +449,7 @@ func (n *HostNode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 		return syscall.EXDEV
 	}
 	if srcRule {
-		if err := n.ensureShadowParent(dstRel); err != nil {
+		if err := n.ensureShadowParent(ctx, dstRel); err != nil {
 			return fs.ToErrno(err)
 		}
 		return fs.ToErrno(syscall.Rename(n.shadowPath(srcRel), n.shadowPath(dstRel)))

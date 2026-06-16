@@ -74,25 +74,25 @@ if mountpoint -q "$MNT"; then
     fusermount3 -u "$MNT" 2>/dev/null || umount -l "$MNT" 2>/dev/null
 fi
 
-# Move the host bind to /var/lib/rp/backing (where rp-fuse will read it from)
-# unless it already moved (e.g. container restart inside the same mount ns).
+# Relocate the host bind from /workspace-real to /var/lib/rp/backing.
+# Using `mount --move` (not --bind) because Docker Desktop's host file-
+# sharing layer presents the bind via a `fakeowner` FS driver that refuses
+# to be the source of a further `bind` mount; --move is a relocation, not
+# a new mount, and fakeowner allows it. Apple Container's virtiofs is
+# fine with either operation, so the same code path works for both.
 if ! mountpoint -q "$BACKING"; then
-    mount --bind "$REAL" "$BACKING" || {
-        echo "rp-init: FAILED to bind $REAL -> $BACKING" >&2
+    mount --move "$REAL" "$BACKING" || {
+        echo "rp-init: FAILED to move $REAL -> $BACKING" >&2
         exec sleep infinity
     }
-    echo "rp-init: bound $REAL -> $BACKING" >&2
+    echo "rp-init: moved $REAL -> $BACKING" >&2
 fi
 
-# Hide /workspace-real from the container namespace. Any process (including
-# coder, but it has no caps anyway) sees an empty tmpfs at that path.
-if ! grep -qE " $REAL tmpfs " /proc/mounts; then
-    mount -t tmpfs -o mode=755,uid=0,gid=0 none "$REAL" || {
-        echo "rp-init: FAILED to overlay tmpfs on $REAL" >&2
-        exec sleep infinity
-    }
-    echo "rp-init: hid $REAL with tmpfs" >&2
-fi
+# After the move, $REAL is back to being an empty directory in the image
+# layer (no mountpoint). Chmod it root-only as defense-in-depth so the
+# container user can't accidentally see anything there. The container
+# user has no capabilities so this is belt + braces.
+chmod 0700 "$REAL" 2>/dev/null || true
 
 RULES_FLAG=""
 if [ -f "$RULES" ]; then

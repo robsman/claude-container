@@ -96,11 +96,14 @@ esac
 
 # Step 1.5: refuse non-Debian/Ubuntu bases up front. The overlay installs
 # fuse3 via apt; Alpine, RHEL, Arch, distroless etc. are not supported in v1.
-# Pull explicitly first so a pull failure (manifest missing, network error,
-# arch mismatch) is reported as such, not conflated with a Debian-probe miss.
-# Pre-pulled images noop; first-time pulls take a few seconds.
-if ! pull_err=$(container image pull "$SOURCE_REF" 2>&1); then
-    cat >&2 <<MSG
+# Pull explicitly when the image is not already local — separates pull
+# failures (manifest missing, network error, arch mismatch) from Debian-
+# probe misses. Skip pull for locally-built images (robo-pen-default,
+# images we just built in this script's earlier `build` branch).
+# `container image inspect` returns 0 iff the image exists locally.
+if ! container image inspect "$SOURCE_REF" >/dev/null 2>&1; then
+    if ! pull_err=$(container image pull "$SOURCE_REF" 2>&1); then
+        cat >&2 <<MSG
 build-project-image: failed to pull base image '$SOURCE_REF':
 
 $pull_err
@@ -108,7 +111,8 @@ $pull_err
 Common causes: image tag does not exist, no arm64 manifest in the manifest
 list, network unreachable, or the registry requires authentication.
 MSG
-    exit 1
+        exit 1
+    fi
 fi
 
 # Probe for /etc/debian_version (Debian + Debian-derived like Ubuntu set it).

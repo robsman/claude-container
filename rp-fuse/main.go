@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -42,6 +43,7 @@ func main() {
 	}
 
 	backing := flag.String("backing", "", "backing host directory (absolute)")
+	backingFd := flag.Int("backing-fd", -1, "backing as open fd inherited from caller; resolves /proc/self/fd/N. Used when the path cannot be reached by name (e.g. about to be overmounted)")
 	shadow := flag.String("shadow", "", "shadow store directory (absolute)")
 	mountpoint := flag.String("mount", "", "mount point (absolute)")
 	rulesPath := flag.String("rules", "", "path to .rp/shadow (optional)")
@@ -49,8 +51,23 @@ func main() {
 	cacheSec := flag.Float64("cache", 1.0, "attr/entry cache TTL in seconds")
 	flag.Parse()
 
-	if *backing == "" || *shadow == "" || *mountpoint == "" {
-		log.Fatal("--backing, --shadow, --mount are required")
+	if *backing == "" && *backingFd < 0 {
+		log.Fatal("one of --backing or --backing-fd is required")
+	}
+	if *backing != "" && *backingFd >= 0 {
+		log.Fatal("--backing and --backing-fd are mutually exclusive")
+	}
+	if *shadow == "" || *mountpoint == "" {
+		log.Fatal("--shadow and --mount are required")
+	}
+	if *backingFd >= 0 {
+		// /proc/self/fd/N is a "magic symlink" — the kernel resolves it via
+		// the inode the fd already opens, not via path. So even if the path
+		// it was originally opened from (/workspace-real) gets overmounted
+		// with tmpfs immediately after this process started, lookups under
+		// /proc/self/fd/N still reach the original host content.
+		resolved := fmt.Sprintf("/proc/self/fd/%d", *backingFd)
+		*backing = resolved
 	}
 
 	rules, err := ParseRulesFile(*rulesPath)

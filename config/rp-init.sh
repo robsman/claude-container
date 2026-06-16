@@ -33,16 +33,14 @@ set +e
 
 REAL=/workspace-real
 MNT=/workspace
-BACKING=/var/lib/rp/backing
 SHADOW=/var/lib/rp/shadow
-RULES="$BACKING/.rp/shadow"
 
 if [ ! -d "$REAL" ]; then
     echo "rp-init: $REAL does not exist; nothing to mount" >&2
     exec sleep infinity
 fi
 
-mkdir -p "$MNT" "$BACKING" "$SHADOW"
+mkdir -p "$MNT" "$SHADOW"
 chmod 0700 /var/lib/rp
 
 # Re-assert the shadow-boundary invariants (ADR-0005 / ADR-0008 invariant 3):
@@ -74,30 +72,37 @@ if mountpoint -q "$MNT"; then
     fusermount3 -u "$MNT" 2>/dev/null || umount -l "$MNT" 2>/dev/null
 fi
 
-# Relocate the host bind from /workspace-real to /var/lib/rp/backing.
-# Using `mount --move` (not --bind) because Docker Desktop's host file-
-# sharing layer presents the bind via a `fakeowner` FS driver that refuses
-# to be the source of a further `bind` mount; --move is a relocation, not
-# a new mount, and fakeowner allows it. Apple Container's virtiofs is
-# fine with either operation, so the same code path works for both.
-if ! mountpoint -q "$BACKING"; then
-    mount --move "$REAL" "$BACKING" || {
-        echo "rp-init: FAILED to move $REAL -> $BACKING" >&2
+# Capture an fd on the host bind BEFORE we overmount it with tmpfs. The
+# kernel resolves /proc/self/fd/N through the inode the fd already opens,
+# not through path lookup, so rp-fuse can still reach the host content
+# even after $REAL is hidden. This avoids bind/move syscalls — important
+# for Docker Desktop, whose fakeowner FS refuses to be the source of any
+# bind or move (see ADR-0010 status notes). Apple Container's virtiofs is
+# also happy with this layout; one code path, two runtimes.
+exec {BACKING_FD}<"$REAL" || {
+    echo "rp-init: FAILED to open fd on $REAL" >&2
+    exec sleep infinity
+}
+echo "rp-init: opened backing fd $BACKING_FD on $REAL" >&2
+
+# Overlay tmpfs on $REAL so the container user can't reach the host bind
+# directly. fd $BACKING_FD still references the original inode regardless.
+if ! grep -qE " $REAL tmpfs " /proc/mounts; then
+    mount -t tmpfs -o mode=755,uid=0,gid=0 none "$REAL" || {
+        echo "rp-init: FAILED to overlay tmpfs on $REAL" >&2
         exec sleep infinity
     }
-    echo "rp-init: moved $REAL -> $BACKING" >&2
+    echo "rp-init: hid $REAL with tmpfs" >&2
 fi
 
-# After the move, $REAL is back to being an empty directory in the image
-# layer (no mountpoint). Chmod it root-only as defense-in-depth so the
-# container user can't accidentally see anything there. The container
-# user has no capabilities so this is belt + braces.
-chmod 0700 "$REAL" 2>/dev/null || true
-
 RULES_FLAG=""
+# Shadow rules live in the workspace at .rp/shadow. We reach them through
+# the captured fd: /proc/self/fd/$BACKING_FD/.rp/shadow resolves via the
+# fd's inode, not via path (the path is now tmpfs).
+RULES="/proc/self/fd/$BACKING_FD/.rp/shadow"
 if [ -f "$RULES" ]; then
     RULES_FLAG="--rules $RULES"
-    echo "rp-init: using rules from $RULES" >&2
+    echo "rp-init: using rules from .rp/shadow" >&2
 else
     echo "rp-init: no .rp/shadow in workspace; pure passthrough" >&2
 fi
@@ -114,9 +119,9 @@ if [ "${RP_DEBUG:-}" = "1" ]; then
     echo "rp-init: FUSE debug logging enabled (RP_DEBUG=1)" >&2
 fi
 
-echo "rp-init: launching rp-fuse" >&2
+echo "rp-init: launching rp-fuse (backing via fd $BACKING_FD)" >&2
 exec /usr/local/bin/rp-fuse \
-    --backing "$BACKING" \
+    --backing-fd "$BACKING_FD" \
     --shadow "$SHADOW" \
     --mount "$MNT" \
     $RULES_FLAG \

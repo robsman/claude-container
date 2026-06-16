@@ -30,6 +30,28 @@
 #       mcr.microsoft.com/devcontainers/javascript-node:22
 #
 # Requires: Docker Desktop with buildx (default on recent installs).
+#
+# STATUS (2026-06-16): the build path works end-to-end. The setuid Go
+# bootstrap (ADR-0010) escalates non-root agent → root, /bin/bash -p
+# preserves EUID through rp-init.sh, CapEff has SYS_ADMIN — all good
+# up to the mount step. The bind-mount of /workspace-real to
+# /var/lib/rp/backing FAILS on Docker Desktop for macOS even with
+# --privileged because Docker's host file-sharing layer presents the
+# bind via a 'fakeowner' FS driver, and that driver refuses to be the
+# source of a further bind mount.
+#
+# Tried and rejected: --security-opt seccomp=unconfined (not seccomp),
+# --privileged (not caps/AppArmor). The fakeowner block is FS-level.
+#
+# Resume options when picking this up:
+#   1. Switch Docker Desktop's file-sharing backend (VirtioFS may not
+#      use fakeowner).
+#   2. Patch rp-init.sh to detect fakeowner and skip the bind+tmpfs
+#      hide step — accepts a weaker shadow boundary (coder can read
+#      /workspace-real directly) in exchange for working under Docker
+#      Sandbox on macOS.
+#   3. Run on Linux Docker (no fakeowner; this is the path that should
+#      Just Work for Docker Sandbox hosted on Linux).
 
 set -euo pipefail
 

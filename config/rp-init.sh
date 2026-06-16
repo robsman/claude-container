@@ -1,5 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # /usr/local/bin/rp-init.sh
+#
+# Note the shebang: `bash -p`. By default bash auto-resets EUID to RUID at
+# startup as a security measure when invoked with mismatched IDs. That kills
+# the escalation done by /usr/local/bin/rp-init-bootstrap (setuid root) when
+# we land in Docker Sandbox-style containers whose default user is non-root.
+# The -p flag preserves the setuid escalation so the script runs as root.
+# Apple Container's path is unaffected: there the container is created with
+# --user 0 so RUID == EUID == 0 and -p is a no-op.
 #
 # Runs as PID 1 (root, CAP_SYS_ADMIN) at container start.
 # Sets up the shadow boundary then launches rp-fuse.

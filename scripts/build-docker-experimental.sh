@@ -160,14 +160,23 @@ RUN mkdir -p /var/lib/rp/shadow /var/lib/rp/backing /workspace /workspace-real /
     && chmod 0700 /var/lib/rp \\
     && chown root:root /var/lib/rp /var/lib/rp/shadow /var/lib/rp/backing
 
-# Pull rp-fuse + init script from the arm64 rp-base we just built.
+# Pull rp-fuse + init script + setuid bootstrap from the arm64 rp-base.
 COPY --from=$BASE_TAG /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
+COPY --from=$BASE_TAG /usr/local/bin/rp-init-bootstrap /usr/local/bin/rp-init-bootstrap
 COPY --from=$BASE_TAG /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
 COPY --from=$BASE_TAG /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
-RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh
+# Re-apply the setuid bit — some Docker variants strip it across COPY --from.
+RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh \\
+    && chown root:root /usr/local/bin/rp-init-bootstrap \\
+    && chmod 4755 /usr/local/bin/rp-init-bootstrap
 
 WORKDIR /workspace
 USER $RP_USER
+
+# ENTRYPOINT exec-form: when Docker Sandbox does \`docker run <image>\`, this
+# runs as USER \$RP_USER above. The setuid bit on rp-init-bootstrap means it
+# transitions to root before doing the mount + exec of rp-fuse. See ADR-0010.
+ENTRYPOINT ["/usr/local/bin/rp-init-bootstrap"]
 EOF
 } > "$OVERLAY_CTX/Dockerfile"
 
@@ -198,14 +207,12 @@ Smoke-test it with:
   docker run --rm -it \\
       --cap-add SYS_ADMIN \\
       --device /dev/fuse \\
-      --user 0 \\
       -v /tmp/rp-docker-probe:/workspace-real \\
-      $OUT_TAG \\
-      /usr/local/bin/rp-init.sh
+      $OUT_TAG
 
-  # --user 0 overrides the image's \`USER $RP_USER\` directive so init can
-  # mount + chown /var/lib/rp. Without it, init runs as $RP_USER and fails
-  # at the mkdir/mount step.
+  # No --user flag needed: the image runs as $RP_USER by default, and the
+  # ENTRYPOINT is /usr/local/bin/rp-init-bootstrap (setuid root), which
+  # bootstraps the FUSE mount as root before exec'ing rp-fuse.
 
 In another shell:
   docker exec -it -u $RP_USER <container-id> bash

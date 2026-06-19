@@ -20,9 +20,14 @@ PROBE_WORKSPACES=()
 
 mk_probe() {
     # Usage: mk_probe <slug>          -> echoes the probe workspace dir.
+    # Returns the realpath so the value matches what `invocation_directory()`
+    # reports inside Justfile recipes (macOS's /tmp is a symlink to
+    # /private/tmp; just resolves it). Without realpath, assertions on
+    # the bind-mount path inside the container would mismatch.
     local slug="$1"
     local ws="$TMPROOT/$slug"
     mkdir -p "$ws"
+    ws=$(cd "$ws" && pwd -P)
     PROBE_WORKSPACES+=("$ws")
     echo "$ws"
 }

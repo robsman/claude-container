@@ -19,7 +19,7 @@ A path NOT matched by any `.rp/shadow` rule. Reads and writes go to the host bin
 _Avoid_: passthrough mount (sounds like a filesystem feature), host-backed.
 
 **Workspace**:
-The container-visible directory where the FUSE-shadowed view of the host workspace lives. Composed by `rp-fuse` from passthrough paths (host-backed) plus shadowed paths (store-backed). Normally `/workspace`; runtimes that don't use that convention (e.g. Docker Sandbox) get the workspace at the matching host path, discovered at init time — see ADR-0010.
+The container-visible directory where the FUSE-shadowed view of the host workspace lives. Composed by `rp-fuse` from passthrough paths (host-backed) plus shadowed paths (store-backed). The host workspace is bind-mounted 1:1 — the path inside the container is the same as the path on the host (e.g. `~/work/proj` shows up as `/Users/me/work/proj` in both places). See ADR-0010 for the mount layout.
 _Avoid_: host workspace, project directory (those name the host-side dir, not the container view).
 
 **Shadow rules**:

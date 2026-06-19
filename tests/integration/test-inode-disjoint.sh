@@ -29,8 +29,8 @@ echo "src content" > src/lib/cache/strategies/local.ts
 cont=$(rp_create_and_start inode)
 
 # Populate shadow with many small files to drive low Ino numbers.
-container exec -u coder "$cont" sh -c '
-    cd /workspace/node_modules
+container exec -u coder --workdir "$ws" "$cont" sh -c '
+    cd node_modules
     mkdir -p _inode_probe
     cd _inode_probe
     for i in $(seq 1 100); do
@@ -41,23 +41,21 @@ container exec -u coder "$cont" sh -c '
 
 # Now walk every backing file and require stat + opendir-where-applicable to
 # match what host would see.
-out=$(container exec -u coder "$cont" sh -c '
+out=$(container exec -u coder --workdir "$ws" "$cont" sh -c '
     set +e
     fails=0
     for p in src/lib/util/u.ts src/lib/cache/cache.ts src/lib/cache/strategies/redis.ts src/lib/cache/strategies/local.ts; do
-        full="/workspace/$p"
-        if ! stat "$full" >/dev/null 2>&1; then
+        if ! stat "$p" >/dev/null 2>&1; then
             echo "STAT-FAIL $p"
             fails=$((fails+1))
         fi
-        if ! cat "$full" >/dev/null 2>&1; then
+        if ! cat "$p" >/dev/null 2>&1; then
             echo "CAT-FAIL $p"
             fails=$((fails+1))
         fi
     done
     for d in src/lib src/lib/util src/lib/cache src/lib/cache/strategies; do
-        full="/workspace/$d"
-        if ! ls "$full" >/dev/null 2>&1; then
+        if ! ls "$d" >/dev/null 2>&1; then
             echo "LS-FAIL $d"
             fails=$((fails+1))
         fi

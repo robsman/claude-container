@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A macOS tool for running coding agents (Claude Code, OpenCode, ...) inside isolated Apple Container containers (Debian bookworm). Requires Apple Silicon and macOS 26+. Containers get full `--dangerously-skip-permissions` access without touching the host. The host directory you invoke `rp` from is bind-mounted to `/workspace` inside the container.
+A macOS tool for running coding agents (Claude Code, OpenCode, ...) inside isolated Apple Container containers (Debian bookworm). Requires Apple Silicon and macOS 26+. Containers get full `--dangerously-skip-permissions` access without touching the host. The host directory you invoke `rp` from is bind-mounted 1:1 inside the container — same path inside and outside.
 
 The project is named **robo-pen**. The wrapper command is **`rp`**.
 
 ## Commands
 
-The `rp` script wraps `just` recipes so you can invoke them from any directory. The current working directory becomes the container's `/workspace` mount; the container name defaults to `rp-<agent>-<basename of cwd>`. An explicit `<name>` arg overrides the default.
+The `rp` script wraps `just` recipes so you can invoke them from any directory. The current working directory is bind-mounted 1:1 inside the container — the workspace path is the same inside and outside. The container name defaults to `rp-<agent>-<basename of cwd>`. An explicit `<name>` arg overrides the default.
 
 ```bash
 # One-time setup (run from anywhere)
@@ -40,7 +40,7 @@ rp stats                # CPU/memory usage
 rp logs                 # container log output
 rp lint                 # validate .rp/{shadow,config.yaml,agents/}
 
-# File transfer (for paths outside /workspace)
+# File transfer (for paths outside the workspace bind)
 rp cp-to <name> <src> <dest>
 rp cp-from <name> <src> <dest>
 ```
@@ -73,7 +73,7 @@ docs/adr/               — design decisions (ADR-0001..0007)
 **Key design points:**
 
 - Containers are named `rp-<agent>-<basename>` (e.g., `cd ~/foo && rp run` with default agent → container `rp-claude-code-foo`). Same workspace can host parallel containers per agent.
-- The host dir where `rp` is invoked is bind-mounted directly to **`/workspace`** in the container. `rp-init.sh` captures an fd on that bind, then stacks a tmpfs (fail-closed backstop) and `rp-fuse` on top of `/workspace`; the user/Claude sees the FUSE layer. The raw bind is reachable only via `rp-fuse`'s captured fd (`/proc/self/fd/N`). See `CONTEXT.md` for vocabulary, `docs/adr/0001-custom-go-fuse-for-workspace-shadowing.md` for the design rationale, and `docs/adr/0010-setuid-init-bootstrap.md` for the mount layout.
+- The host dir where `rp` is invoked is bind-mounted 1:1 inside the container (same path inside and outside). `rp-init.sh` discovers the workspace path via `RP_WORKSPACE` env (set by the Justfile) — fallback is a scan of virtiofs/9p/fakeowner mounts for a `.rp/` marker. It then captures an fd on that bind, stacks a tmpfs (fail-closed backstop) and `rp-fuse` on top; the user/Claude sees the FUSE layer. The raw bind is reachable only via `rp-fuse`'s captured fd (`/proc/self/fd/N`). See `CONTEXT.md` for vocabulary, `docs/adr/0001-custom-go-fuse-for-workspace-shadowing.md` for the design rationale, and `docs/adr/0010-setuid-init-bootstrap.md` for the mount layout.
 - Container name and bind-mount source both come from `invocation_directory()` (a `just` builtin returning caller's cwd before `just` chdirs to the justfile dir). The Justfile resolves the agent at every invocation via `rp-fuse config field agent` against the workspace's `.rp/config.yaml`.
 - Each container records its mount path as a label (`rp.host_path=<absolute path>`). Interactive recipes verify this label matches the current cwd to prevent collisions — if `rp-claude-code-foo` exists but was created from `~/work/foo`, running `rp run` from `~/personal/foo` aborts with a clear error.
 - The `_ensure` helper recipe is called as a dependency by `shell`/`login`/`run`: it auto-creates the container if missing, runs the collision check, and starts it if stopped.
@@ -86,7 +86,7 @@ docs/adr/               — design decisions (ADR-0001..0007)
 - **Edit-config cycle**: changes to `.rp/config.yaml` (agent, image, user, resources, fuse.cache) take effect only at container CREATE time. To pick them up, `rp destroy && rp run` (or `create`). `.rp/shadow` is re-read on every `rp start`, so for shadow-rule-only changes a `rp stop && rp start` suffices.
 - **Debug toggle**: `RP_DEBUG=1 rp create <name>` forwards the env var into the container; `rp-init.sh` then launches `rp-fuse --debug` for verbose FUSE logging. `RP_DEBUG=1 rp build` (via `rp create`) also prints the generated overlay Dockerfile.
 - **Runtime knobs** (ADR-0006 v1 Tier-1): `.rp/config.yaml` supports `resources.memory` (string like `4G`), `resources.cpus` (positive int), and `fuse.cache` (seconds float). Read by `scripts/resolve-create-args.sh` at create time; memory/cpus become `container create --memory`/`--cpus` flags, fuse.cache is forwarded as `-e RP_CACHE=…` and picked up by `rp-init.sh`. `rp lint` validates all of them.
-- **Shadow filtering via `.rp/shadow`** (`rp-fuse` driven, launched by `rp-init.sh` at PID 1): containers are created with `--cap-add SYS_ADMIN`; the unified ENTRYPOINT (`rp-init-bootstrap`, setuid 4755) ensures PID 1 reaches root regardless of the image USER or the runtime's default user (see ADR-0010). The init script then captures an fd on the `/workspace` bind, stacks tmpfs over `/workspace`, and execs `rp-fuse --backing-fd N --shadow /var/lib/rp/shadow --mount /workspace --rules /proc/self/fd/N/.rp/shadow`. `.rp/shadow` uses a strict subset of gitignore syntax (one pattern per line; `*`, `**`, `?`, `[…]`, leading `/` or any mid-`/` anchors to root, trailing `/` for directory-only; no negation). For every path that matches a pattern:
+- **Shadow filtering via `.rp/shadow`** (`rp-fuse` driven, launched by `rp-init.sh` at PID 1): containers are created with `--cap-add SYS_ADMIN`; the unified ENTRYPOINT (`rp-init-bootstrap`, setuid 4755) ensures PID 1 reaches root regardless of the image USER or the runtime's default user (see ADR-0010). The init script discovers the workspace path, then captures an fd on the bind, stacks tmpfs over the workspace path, and execs `rp-fuse --backing-fd N --shadow /var/lib/rp/shadow --mount <ws> --rules /proc/self/fd/N/.rp/shadow`. `.rp/shadow` uses a strict subset of gitignore syntax (one pattern per line; `*`, `**`, `?`, `[…]`, leading `/` or any mid-`/` anchors to root, trailing `/` for directory-only; no negation). For every path that matches a pattern:
   - Host's matching content is INVISIBLE in the container (`stat` returns ENOENT).
   - Container creates/writes/deletes go to `/var/lib/rp/shadow/<rel-path>` — NEVER to the host bind.
   - Build scripts that `rm -rf node_modules && reinstall` are fully contained: the host filesystem is never touched.

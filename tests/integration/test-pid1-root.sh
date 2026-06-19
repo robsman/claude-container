@@ -21,14 +21,14 @@ cont=$(rp_create_and_start pid1-root)
 # Wait up to 6s for rp-fuse to come up (init flow is bootstrap → init.sh →
 # exec rp-fuse, with a few mount syscalls in between).
 for _ in $(seq 1 30); do
-    if container exec -u 0 "$cont" awk '$2=="/workspace" && $3 ~ /^fuse/' /proc/mounts 2>/dev/null | grep -q .; then
+    if container exec -u 0 "$cont" awk -v m="$ws" '$2==m && $3 ~ /^fuse/' /proc/mounts 2>/dev/null | grep -q .; then
         break
     fi
     sleep 0.2
 done
 
-line=$(container exec -u 0 "$cont" awk '$2=="/workspace" && $3 ~ /^fuse/' /proc/mounts 2>&1 || true)
-[ -n "$line" ] || fail "no fuse mount at /workspace after 6s"
+line=$(container exec -u 0 "$cont" awk -v m="$ws" '$2==m && $3 ~ /^fuse/' /proc/mounts 2>&1 || true)
+[ -n "$line" ] || fail "no fuse mount at $ws after 6s"
 
 # Mount-line uid: fuse mounts include user_id=<owner>. Root mounting
 # requires CAP_SYS_ADMIN (kernel side) — so user_id=0 implies the chain

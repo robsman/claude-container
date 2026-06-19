@@ -100,21 +100,19 @@ die() {
 
 # --- Workspace discovery -------------------------------------------------
 #
-# Three sources, evaluated in order:
-#   1. $RP_WORKSPACE if set and is a directory. Explicit override for
-#      runtimes (e.g. Docker Sandbox) whose mount layout doesn't include
-#      /workspace.
-#   2. /workspace if it exists and is a mountpoint. The rp wrapper binds
-#      the host workspace there (Justfile create line), so this is the
-#      Apple Container / Docker default.
-#   3. Scan /proc/mounts for virtiofs / 9p / fuse.fakeowner mounts whose
+# Two sources, evaluated in order:
+#   1. $RP_WORKSPACE if set and is a directory. The rp wrapper sets this
+#      to the host path of the workspace (1:1 bind, so the same path
+#      inside and outside the container). Sandbox-style templates set it
+#      explicitly in their kit config.
+#   2. Scan /proc/mounts for virtiofs / 9p / fakeowner mounts whose
 #      target is a directory containing .rp/. First match wins. This is
-#      the Docker Sandbox path — Sandbox mounts host dirs 1:1 at the host
-#      path inside the container, with no /workspace convention.
+#      the fallback path for runtimes that don't pass RP_WORKSPACE — e.g.
+#      a user running `docker run -v /path:/path -e RP_WORKSPACE=/path` is
+#      the env path; without the -e flag, scan picks /path up via virtiofs.
 #
-# Multiple .rp/-marked mounts in one container are not supported in this
-# phase (see ADR-0010 status notes); the scan picks the first match and
-# emits a warning if there are others.
+# Multi-workspace (Phase 2) extends this to return a LIST; today both
+# paths return a single workspace.
 
 discover_workspace() {
     if [ -n "${RP_WORKSPACE:-}" ]; then
@@ -125,15 +123,6 @@ discover_workspace() {
             echo "rp-init: RP_WORKSPACE=$RP_WORKSPACE is not a directory" >&2
             return 1
         fi
-    fi
-    # The rp-managed convention: /workspace bound by the rp wrapper. We don't
-    # use `mountpoint -q` because Apple Container's bind doesn't reliably
-    # register via util-linux's mountpoint test. Instead we look for the
-    # workspace-marker (.rp/) that the wrapper guarantees: `rp init` creates
-    # it on the host and the bind exposes it inside the container.
-    if [ -d /workspace/.rp ]; then
-        echo /workspace
-        return 0
     fi
     # Scan for first virtiofs / 9p / fuse.fakeowner mount that is a
     # directory and contains .rp/. Warn if there are extras (Phase 2 work).
@@ -166,7 +155,7 @@ discover_workspace() {
     return 1
 }
 
-MNT=$(discover_workspace) || die "no rp workspace found; set RP_WORKSPACE, bind to /workspace, or place .rp/ in a virtiofs/9p/fakeowner mount"
+MNT=$(discover_workspace) || die "no rp workspace found; set RP_WORKSPACE or bind a workspace dir whose root has .rp/ (virtiofs/9p/fakeowner mount)"
 echo "rp-init: workspace = $MNT" >&2
 
 # --- Pre-cover phase: failures here exit (or sleep under RP_DIAGNOSE). ---

@@ -254,8 +254,10 @@ RUN if cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | sed 's/#.*//' \\
         echo "rp-overlay: user '$RP_USER' has a sudoers entry, refusing" >&2; exit 1; \\
     fi
 
-# Mount points for the shadow boundary + agent entrypoint dir.
-RUN mkdir -p /var/lib/rp/shadow /workspace /usr/local/lib/rp \\
+# Mount points for the shadow boundary + agent entrypoint dir. No
+# fixed workspace path: with 1:1 binds, the workspace is the host path
+# (see ADR-0010 workspace-discovery section).
+RUN mkdir -p /var/lib/rp/shadow /usr/local/lib/rp \\
     && chmod 0700 /var/lib/rp \\
     && chown root:root /var/lib/rp /var/lib/rp/shadow
 
@@ -330,7 +332,7 @@ fi
 
 cat <<EOF
 
-WORKDIR /workspace
+WORKDIR /home/$RP_USER
 USER $RP_USER
 
 # Re-assert the unified entry point. The overlay is the last layer applied

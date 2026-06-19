@@ -49,4 +49,4 @@ WORKDIR /home/coder
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/home/coder/.local/bin:${PATH}"
 
-WORKDIR /workspace
+WORKDIR /home/coder

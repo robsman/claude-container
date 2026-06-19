@@ -9,7 +9,7 @@ Requires Apple Silicon + macOS 26+.
 ## What you get
 
 - **Coding agent in a sandbox.** The container is started with `--dangerously-skip-permissions` but can only touch what you let it touch.
-- **Per-folder containers, per-agent.** `cd ~/my-project && rp run` auto-creates `rp-<agent>-my-project` and mounts that folder as `/workspace`. Stop, start, destroy — your files stay on the Mac. Same workspace can host parallel containers per agent (Claude Code vs OpenCode side by side).
+- **Per-folder containers, per-agent.** `cd ~/my-project && rp run` auto-creates `rp-<agent>-my-project` and bind-mounts that folder 1:1 (the path inside the container matches the host path — `~/my-project` shows up at `/Users/me/my-project` both inside and out). Stop, start, destroy — your files stay on the Mac. Same workspace can host parallel containers per agent (Claude Code vs OpenCode side by side).
 - **`.rp/shadow` filtering.** A gitignore-style file at your workspace root tells `rp-fuse` which paths are container-local. Host secrets (`.env.local`, `.aws/credentials`) stay invisible. Build artifacts (`node_modules`, `.venv`, `target`) live only in the container, so architecture mismatches and `rm -rf node_modules` cycles never pollute the host.
 - **Per-agent profiles.** A profile bundle (`agent.profiles/<name>/` or workspace-local `.rp/agents/<name>/`) defines how to install + run an agent. Switch agents by changing one line in `.rp/config.yaml`.
 - **Real security boundary.** The container's user has no `sudo` and no capabilities. The host bind is hidden in a root-only mount; `coder` cannot bypass the shadow layer even with intent. See `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md`.
@@ -251,7 +251,7 @@ Then `rp destroy && rp create` (memory is a create-time flag).
 ## What happens inside the container
 
 - You run as the configured user (default `coder` uid 1000), **no sudo**. System packages must be added at image-build time (edit `Dockerfile` or your per-project `.rp/Dockerfile`, run `rp rebuild`).
-- `/workspace` is a FUSE mount served by `rp-fuse`. Passthrough paths reach the host bind; shadowed paths live in a container-local store.
+- The workspace (host path, 1:1 inside the container) is a FUSE mount served by `rp-fuse`. Passthrough paths reach the host bind; shadowed paths live in a container-local store.
 - Toolchain comes from the project image; the agent comes from the configured profile. With the default image + claude-code profile that's: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`.
 - Auth: per-agent. claude-code uses `rp login` (Anthropic subscription) or `ANTHROPIC_API_KEY`. Other profiles declare their own env vars in `manifest.env`.
 
@@ -281,7 +281,7 @@ See ADR-0007 for the full design rationale.
 
 ### Upgrading across the FUSE-over-bind layout change (2026-06-16)
 
-The mount layout was simplified: the host workspace is now bind-mounted directly at `/workspace` (FUSE + tmpfs stacked on top) instead of at `/workspace-real`. **Existing containers built before this change must be recreated** — the old bind target is gone, so on restart the container would come up with an empty `/workspace`.
+The mount layout was simplified: the host workspace is now bind-mounted 1:1 (the path inside the container matches the host path) instead of at a fixed `/workspace`. FUSE + tmpfs still stack on top. **Existing containers built before this change must be recreated** — the bind target moved, so on restart the workspace path would not exist inside the container.
 
 ```bash
 rp destroy && rp create
@@ -296,7 +296,7 @@ No workspace data is touched; only the container is rebuilt. See ADR-0010 for th
 Read `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md` for the full reasoning. Short version:
 
 - Default container view shows the workspace mediated by `rp-fuse`. Shadowed paths return ENOENT to the container; only the container's own writes survive there.
-- The host bind is mounted at `/workspace`; `rp-init.sh` immediately overlays a tmpfs and then `rp-fuse` on top. The raw bind is reachable only via the captured fd held by `rp-fuse` (`/proc/self/fd/N`) — there is no user-visible path to it.
+- The host bind is mounted 1:1 (same path inside and outside the container); `rp-init.sh` immediately overlays a tmpfs and then `rp-fuse` on top of that workspace path. The raw bind is reachable only via the captured fd held by `rp-fuse` (`/proc/self/fd/N`) — there is no user-visible path to it.
 - If `rp-fuse` ever fails to mount or exits, the tmpfs underneath becomes visible — empty, not the raw host bind (fail-closed).
 - The shadow store lives at `/var/lib/rp/shadow` (mode 0700, root-only). `coder` cannot traverse it.
 - `coder` has no capabilities and no sudo, so it cannot `umount` any of the layers above or escalate to root to bypass them.

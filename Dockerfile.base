@@ -63,11 +63,14 @@ COPY config/00-container.md /etc/rp/instructions/00-container.md
 RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh \
     && chown root:root /usr/local/bin/rp-init-bootstrap \
     && chmod 4755 /usr/local/bin/rp-init-bootstrap \
-    && mkdir -p /var/lib/rp/shadow /workspace /usr/local/lib/rp \
+    && mkdir -p /var/lib/rp/shadow /usr/local/lib/rp \
     && chmod 0700 /var/lib/rp \
     && chown root:root /var/lib/rp /var/lib/rp/shadow
 
-WORKDIR /workspace
+# No fixed workspace path: 1:1 binds put the workspace at the host path,
+# and interactive sessions set --workdir explicitly. Pick a neutral
+# default for non-interactive entrypoints (the agent user's home).
+WORKDIR /home/coder
 
 # Single entry path for every runtime (Apple Container, Docker, Docker
 # Sandbox). tini is PID 1 so the container has standard zombie-reaping +

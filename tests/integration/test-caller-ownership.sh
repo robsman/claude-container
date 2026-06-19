@@ -15,9 +15,8 @@ cont=$(rp_create_and_start ownership)
 
 # Force a shadow-routed write as coder. .rp/shadow ships node_modules/ as
 # shadowed by default; that's where the action goes.
-out=$(container exec -u coder "$cont" sh -c '
+out=$(container exec -u coder --workdir "$ws" "$cont" sh -c '
     set -x
-    cd /workspace
     mkdir -p node_modules/_ownership_probe && cd node_modules/_ownership_probe
     touch f1
     mkdir d1
@@ -26,10 +25,8 @@ out=$(container exec -u coder "$cont" sh -c '
 ' 2>&1) || fail "shadow create + install failed: $out"
 
 # Read the uids back via FUSE listing.
-out=$(container exec -u coder "$cont" sh -c '
-    cd /workspace/node_modules/_ownership_probe
-    stat -c "%n %U" f1 d1 sym1 f2
-' 2>&1)
+out=$(container exec -u coder --workdir "$ws/node_modules/_ownership_probe" "$cont" \
+    stat -c "%n %U" f1 d1 sym1 f2 2>&1)
 
 while IFS= read -r line; do
     name=${line%% *}

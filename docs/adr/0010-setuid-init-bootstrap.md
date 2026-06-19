@@ -1,10 +1,10 @@
 # Non-root container init + FUSE-over-bind mount stack
 
-Two coupled decisions taken together because they unblock the same goal — running `rp` under runtimes that (a) start the container as a non-root default user and (b) refuse bind/move with the host share as source. Apple Container honours neither constraint; Docker Sandbox / Docker Desktop on macOS imposes both. The first decision (setuid Go bootstrap + RUID equalization) gives the init script a complete root identity. The second decision (FUSE-over-tmpfs-over-bind directly at `/workspace`) gives the shadow filesystem a single mount layout that works on both runtimes without bind/move tricks. They share an ADR because (a) they shipped together, (b) each one alone is insufficient — Docker Sandbox needs both — and (c) splitting them would leave a reader of one wondering why the other exists.
+Two coupled decisions taken together because they unblock the same goal — running `rp` under runtimes that (a) start the container as a non-root default user and (b) refuse bind/move with the host share as source. Apple Container honours neither constraint; Docker Sandbox / Docker Desktop on macOS imposes both. The first decision (setuid Go bootstrap + RUID equalization) gives the init script a complete root identity. The second decision (FUSE-over-tmpfs-over-bind directly at the workspace path) gives the shadow filesystem a single mount layout that works on both runtimes without bind/move tricks. They share an ADR because (a) they shipped together, (b) each one alone is insufficient — Docker Sandbox needs both — and (c) splitting them would leave a reader of one wondering why the other exists.
 
 ## Setuid Go wrapper for the init bootstrap
 
-`rp-init.sh` requires root: it captures an fd on `/workspace` (the host bind), stacks tmpfs + rp-fuse on top of `/workspace`, and execs `rp-fuse` as PID 1 with CAP_SYS_ADMIN. Container runtimes differ in how they hand PID 1 to the image: Apple Container historically used `container create --user 0 …`; Docker Sandbox templates have no equivalent — they start their containers with a non-root `agent` user and offer no documented hook for a privileged pre-start step. ([Docker Sandbox kits docs](https://docs.docker.com/ai/sandboxes/customize/kits/): `commands.startup` runs as agent; `commands.install` runs once at kit setup, not per container start.) Rather than fork the create flow per runtime, we install a setuid bootstrap and let the kernel handle the escalation uniformly.
+`rp-init.sh` requires root: it captures an fd on the workspace (the host bind), stacks tmpfs + rp-fuse on top of the workspace path, and execs `rp-fuse` as PID 1 with CAP_SYS_ADMIN. Container runtimes differ in how they hand PID 1 to the image: Apple Container historically used `container create --user 0 …`; Docker Sandbox templates have no equivalent — they start their containers with a non-root `agent` user and offer no documented hook for a privileged pre-start step. ([Docker Sandbox kits docs](https://docs.docker.com/ai/sandboxes/customize/kits/): `commands.startup` runs as agent; `commands.install` runs once at kit setup, not per container start.) Rather than fork the create flow per runtime, we install a setuid bootstrap and let the kernel handle the escalation uniformly.
 
 We ship a small setuid-root Go binary, `rp-init-bootstrap`, baked into the rp-base image at `/usr/local/bin/rp-init-bootstrap` with mode `4755`. **It is the child of the unified `ENTRYPOINT` for every rp image**, regardless of runtime. The full ENTRYPOINT is `["tini", "--", "/usr/local/bin/rp-init-bootstrap"]` — tini sits at PID 1 as the conventional zombie-reaper / signal-forwarder, and reaps zombies for the (small) process tree we run. Docker Sandbox specifically depends on tini-as-PID-1; without it, Sandbox's lifecycle hooks fail and the container is reported as "not running" before the agent can attach. tini is baked into `rp-base` (Debian's `tini` package) and explicitly COPYed into overlays so user-supplied bases don't need to ship it. The kernel handles the escalation: if the runtime starts the container as a non-root user (e.g. Docker Sandbox's `agent`, or the image's own `USER` directive on Apple Container), the setuid bit kicks in and EUID becomes 0 before `main()` runs; if the runtime starts the container as root, the setuid bit is a no-op and the bootstrap is just a thin shell over `rp-init.sh`. The wrapper then `execve`s `/usr/local/bin/rp-init.sh` either way. Sessions continue to land as the agent via `<runtime> exec -u <agent>`.
 
@@ -31,24 +31,24 @@ Fix: bootstrap calls `setresuid(0, 0, 0)` (and `setresgid`) before `execve`. Req
 
 This is technically separable from the setuid-Bootstrap purpose, but lives in the same binary because both concerns serve the same goal — "make the script see a complete root identity" — and splitting them into two binaries would just multiply the audit surface.
 
-## FD-as-backing mount layout (FUSE over tmpfs over bind, at /workspace)
+## FD-as-backing mount layout (FUSE over tmpfs over bind, at the workspace path)
 
 Independent of the bootstrap, the script needs to keep the host workspace reachable by rp-fuse while making it unreachable to the container user. Docker Desktop's host file-sharing layer presents bind mounts via a `fakeowner` FS driver that refuses to be the source of any further `mount --bind`, `--rbind`, or `--move`. Even `--privileged` doesn't bypass that.
 
-The current layout uses an open file descriptor as the backing reference instead of a mount, and stacks tmpfs + FUSE directly on top of the host bind:
+The current layout uses an open file descriptor as the backing reference instead of a mount, and stacks tmpfs + FUSE directly on top of the host bind. The workspace is bind-mounted **1:1** (host path = container path) — see the discovery section below.
 
 ```
-runtime bind:  /workspace                 ← Docker / Apple Container bind from host workspace
-init step 1:   exec {BACKING_FD}<$MNT     ← capture fd on the bind BEFORE overmount
-init step 2:   mount -t tmpfs … /workspace ← fail-closed backstop
-init step 3:   mount -t fuse  … /workspace ← rp-fuse, --backing-fd N
+runtime bind:  $WS                        ← Docker / Apple Container bind from host workspace (1:1)
+init step 1:   exec {BACKING_FD}<$WS     ← capture fd on the bind BEFORE overmount
+init step 2:   mount -t tmpfs … $WS      ← fail-closed backstop
+init step 3:   mount -t fuse  … $WS      ← rp-fuse, --backing-fd N
                                             kernel resolves /proc/self/fd/N
                                             through the fd's inode, not via
                                             path lookup — bypasses the tmpfs +
                                             FUSE that now sit on top.
 ```
 
-User-visible at `/workspace`: the FUSE layer. The raw host bind is reachable only through the fd held by rp-fuse — no separate path. If rp-fuse exits or never mounts, the tmpfs underneath becomes visible (empty), not the raw bind. This is fail-closed by construction; no post-mount verification needed.
+User-visible at `$WS`: the FUSE layer. The raw host bind is reachable only through the fd held by rp-fuse — no separate path. If rp-fuse exits or never mounts, the tmpfs underneath becomes visible (empty), not the raw bind. This is fail-closed by construction; no post-mount verification needed.
 
 No separate `/workspace-real` mountpoint, no `/var/lib/rp/backing` bind, no bind/move on the fakeowner mount. The same code path works on Apple Container's virtiofs (which would have allowed bind anyway). One mount stack, two runtimes, no coupling to host-share FS quirks.
 
@@ -73,14 +73,13 @@ Sandbox kit YAML doesn't expose a `devices:` or `cap_add:` key for whitelisting 
 
 The remaining bits we landed during this investigation stay because they're useful beyond Sandbox: `/dev/fuse` autocreate (any runtime that omits the device node), `RP_ALLOW_SUDO` (any image whose user has sudo), `fakeowner` in the workspace-discovery scan (Docker Desktop), `--poc` / `--diagnose` flags on `build-docker-experimental.sh`.
 
-## Workspace discovery
+## Workspace discovery (1:1 binds)
 
-`/workspace` is the convention used by the `rp` wrapper (Justfile binds the host cwd there). Docker Sandbox does NOT use that convention — it mounts the user's host dir 1:1 at the matching host path inside the container (e.g. `/Users/robsman/work/proj` becomes `/Users/robsman/work/proj` inside). For rp to work under Sandbox the init script discovers the workspace at startup, in this order:
+The `rp` wrapper bind-mounts the host workspace **1:1** — the path inside the container is the same as the path on the host. This aligns with Docker Sandbox's convention ("workspace mounted at the same absolute path as on your host") and removes the `/workspace` magic path that earlier rp versions used. The init script discovers the workspace at startup:
 
-1. `$RP_WORKSPACE` if set and is a directory — explicit override. Sandbox templates set this in their env config.
-2. `/workspace` if it exists and is a mountpoint — the rp-wrapper / Apple Container convention.
-3. Scan `/proc/mounts` for `virtiofs` / `9p` / `fuse.fakeowner` entries whose target is a directory containing `.rp/` — first match wins.
+1. `$RP_WORKSPACE` if set and is a directory — the canonical signal. The `rp` Justfile sets it explicitly via `-e RP_WORKSPACE={{host_dir}}`; Sandbox templates set it in kit env config.
+2. Scan `/proc/mounts` for `virtiofs` / `9p` / `fakeowner` / `fuse.fakeowner` entries whose target is a directory containing `.rp/` — first match wins. Fallback for runtimes that don't pass the env var (e.g. `docker run -v /path:/path` without `-e RP_WORKSPACE`).
 
-The scan is naturally tolerant of unrelated virtiofs entries: `/etc/resolv.conf` is a regular file and gets skipped by the directory check. Multiple `.rp/`-marked mounts in one container produce a warning and pick the first; multi-workspace FUSE (one process mounting N trees) is deferred until a real use case surfaces.
+The scan tolerates unrelated entries: `/etc/resolv.conf` is a regular file and gets skipped by the directory check. Multiple `.rp/`-marked mounts in one container — multi-workspace FUSE (one rp-fuse process mounting N trees) is deferred until a real use case surfaces; today the scan picks the first match.
 
 The mount-stack logic above is then applied to whichever `$MNT` discovery returned. fd capture, tmpfs cover, and rp-fuse mount all target the discovered path.

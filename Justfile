@@ -172,7 +172,8 @@ _ensure name=host_name:
             -l rp.managed=true \
             $CONTAINER_ENV \
             $CREATE_FLAGS \
-            -v "{{host_dir}}:/workspace" \
+            -e "RP_WORKSPACE={{host_dir}}" \
+            -v "{{host_dir}}:{{host_dir}}" \
             "$IMAGE_TAG" > /dev/null
         echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
     else
@@ -191,7 +192,8 @@ _ensure name=host_name:
         container start {{prefix}}{{name}} > /dev/null
     fi
 
-# Create a new container, bind-mounting the current directory as /workspace
+# Create a new container, bind-mounting the current directory 1:1 (the host
+# path is the in-container path; see ADR-0010 workspace-discovery section).
 create name=host_name *CONTAINER_ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -214,7 +216,8 @@ create name=host_name *CONTAINER_ARGS:
         -l rp.managed=true \
         $CONTAINER_ENV \
         $CREATE_FLAGS \
-        -v "{{host_dir}}:/workspace" \
+        -e "RP_WORKSPACE={{host_dir}}" \
+            -v "{{host_dir}}:{{host_dir}}" \
         {{CONTAINER_ARGS}} \
         "$IMAGE_TAG"
     echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
@@ -233,7 +236,10 @@ restart name=host_name:
 
 # Open a shell (auto-creates / auto-starts as needed)
 shell name=host_name: (_ensure name)
-    container exec -it -u {{user}} {{prefix}}{{name}} bash
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} bash
 
 # Log in to the agent (Claude subscription flow opens a URL to authenticate)
 login name=host_name: (_ensure name)
@@ -243,7 +249,8 @@ login name=host_name: (_ensure name)
         echo "agent profile has no login flow" >&2
         exit 1
     fi
-    container exec -it -u {{user}} {{prefix}}{{name}} /usr/local/lib/rp/login.sh
+    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} /usr/local/lib/rp/login.sh
 
 # Run the agent. Default mode = bypass-permissions (the container is the
 # safety boundary). Pass --gated as the FIRST positional arg to dispatch to
@@ -261,7 +268,8 @@ run name=host_name *ARGS: (_ensure name)
             exit 1
         fi
     fi
-    container exec -it -u {{user}} {{prefix}}{{name}} "$script" "${args[@]}"
+    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} "$script" "${args[@]}"
 
 # Copy files from host to container
 cp-to name src dest:

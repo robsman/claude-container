@@ -39,10 +39,10 @@ node_modules
 		{5, "ok", "literal-anchored"},
 		{6, "ok", "glob-anchored"},
 		{7, "ok", "glob-unanchored"},
-		{8, "warn", ""},  // !keep
-		{9, "err", ""},   // ..
-		{10, "err", ""},  // foo/../bar
-		{11, "warn", ""}, // duplicate node_modules
+		{8, "ok", "literal-unanchored"}, // !keep — negation (ADR-0011); classified on the body
+		{9, "err", ""},                   // ..
+		{10, "err", ""},                  // foo/../bar
+		{11, "warn", ""},                 // duplicate node_modules
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("lintReader:\n  got:  %v\n  want: %v", got, want)

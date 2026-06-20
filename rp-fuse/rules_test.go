@@ -117,11 +117,68 @@ target
 	}
 }
 
-func TestRulesNegationSkipped(t *testing.T) {
+func TestRulesNegationPreserved(t *testing.T) {
+	// Negation rules are kept in the parsed pattern list (and honoured at
+	// match time via the ordered matcher; see TestRulesNegationOverrides).
 	r := compile(t, "node_modules\n!keep\n.env\n")
-	want := []string{"node_modules", ".env"}
+	want := []string{"node_modules", "!keep", ".env"}
 	if !reflect.DeepEqual(r.Patterns(), want) {
-		t.Errorf("patterns = %v, want %v (negation must be dropped)", r.Patterns(), want)
+		t.Errorf("patterns = %v, want %v", r.Patterns(), want)
+	}
+	if !r.hasNegation {
+		t.Error("hasNegation should be true when a '!' rule is present")
+	}
+}
+
+func TestRulesNegationOverrides(t *testing.T) {
+	// To re-expose node_modules/important under a shadowed node_modules,
+	// the positive rules must match CHILDREN of node_modules (not
+	// node_modules itself), so the FUSE Lookup chain can drill into the
+	// re-exposed subtree. Using `node_modules/**` for the positive side
+	// also matches the bare "node_modules" per go-gitignore, which would
+	// route the parent to shadow before children are examined.
+	r := compile(t, "node_modules/*\nnode_modules/**/*\n!node_modules/important\n!node_modules/important/**\n")
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// Parent NOT matched — Lookup can drill in.
+		{"node_modules", false},
+		// Plain shadowed paths under node_modules.
+		{"node_modules/foo", true},
+		{"node_modules/foo/index.js", true},
+		// Negated subtree — re-exposed.
+		{"node_modules/important", false},
+		{"node_modules/important/index.js", false},
+		{"node_modules/important/sub/deeper.ts", false},
+		// Untouched path.
+		{"src/main.go", false},
+	}
+	for _, c := range cases {
+		if got := r.Match(c.path); got != c.want {
+			t.Errorf("Match(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+func TestRulesNegationOrder(t *testing.T) {
+	// Gitignore semantics: last matching rule wins. With !rule before the
+	// positive rule, the positive rule overrides and re-shadows everything.
+	r := compile(t, "!node_modules/important\n!node_modules/important/**\nnode_modules/*\nnode_modules/**/*\n")
+	if !r.Match("node_modules/important/index.js") {
+		t.Error("expected re-shadow when positive rules come last")
+	}
+}
+
+func TestRulesNegationDisablesFastPath(t *testing.T) {
+	r := compile(t, "node_modules\n!keep\n")
+	// hasNegation should be set, and the fast-path maps should be empty
+	// (every match goes through the ordered matcher to honour negation).
+	if !r.hasNegation {
+		t.Fatal("hasNegation expected true")
+	}
+	if len(r.anchored) != 0 || len(r.unanchored) != 0 {
+		t.Errorf("fast-path maps should be empty under negation; got anchored=%v unanchored=%v", r.anchored, r.unanchored)
 	}
 }
 

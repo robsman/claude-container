@@ -14,3 +14,7 @@ Reasoning:
 - **Negation conflicts with our model.** A path is either shadowed or not — there's no "shadow this directory but expose this specific file" because re-introducing a single file would require crossing the boundary at a specific subpath, which complicates the resolution layer without clear demand.
 
 Trade-off: users with `.gitignore` muscle memory must know "negation isn't supported". The lint subcommand (`rp lint`) reports unsupported patterns explicitly.
+
+## Postscript (2026-06-20)
+
+The "no negation" clause was reversed by ADR-0011. Negation is now honoured per standard gitignore last-match-wins semantics; the lint warning is gone. Everything else in this ADR — the filename, the strict-subset glob syntax, the mid-slash anchoring override — still stands.

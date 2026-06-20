@@ -289,14 +289,14 @@ func lintReader(r io.Reader) ([]LintEntry, error) {
 		if trim == "" || strings.HasPrefix(trim, "#") {
 			continue
 		}
-		if strings.HasPrefix(trim, "!") {
-			out = append(out, LintEntry{
-				Line: lineNo, Raw: trim, Status: "warn",
-				Message: "negation not supported; skipped",
-			})
-			continue
+		// Negation is now supported (ADR-0011). Validate the body just like
+		// any other pattern — '!' is the only special prefix and otherwise
+		// rules follow the same syntax constraints.
+		body := trim
+		if strings.HasPrefix(body, "!") {
+			body = strings.TrimPrefix(body, "!")
 		}
-		if err := validatePattern(trim); err != nil {
+		if err := validatePattern(body); err != nil {
 			out = append(out, LintEntry{
 				Line: lineNo, Raw: trim, Status: "err",
 				Message: err.Error() + "; skipped",
@@ -311,12 +311,15 @@ func lintReader(r io.Reader) ([]LintEntry, error) {
 			continue
 		}
 		seen[trim] = lineNo
-		kind, key := classify(trim)
+		// classify operates on the pattern body (without the '!' prefix);
+		// negation is orthogonal to whether the pattern is anchored / glob /
+		// unanchored.
+		kind, key := classify(body)
 		out = append(out, LintEntry{
 			Line:   lineNo,
 			Raw:    trim,
 			Status: "ok",
-			Class:  className(kind, trim),
+			Class:  className(kind, body),
 			Key:    key,
 		})
 	}

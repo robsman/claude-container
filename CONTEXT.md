@@ -11,7 +11,7 @@ A path listed in `.rp/shadow`. The host's content at that path is invisible to t
 _Avoid_: ignore (misleading — the path is not ignored, just rerouted), mask (misses the writable half), private (the path also exists on host), overlay (collides with kernel `overlayfs`).
 
 **Shadow store**:
-The container-local directory backing all shadowed paths, located at `/var/lib/rp/shadow`. Mirrors the workspace path structure: a shadow for `a/b/c` lives at `/var/lib/rp/shadow/a/b/c`. Survives `rp stop`/`start`; wiped on `rp destroy`.
+The container-local directory backing all shadowed paths for one workspace, located at `/var/lib/rp/shadow/<key>` where `<key>` is `sha256(absolute workspace path)[:8]`. Mirrors the workspace's path structure: a shadowed path `a/b/c` inside workspace `W` lives at `/var/lib/rp/shadow/<key(W)>/a/b/c`. Per-workspace keying means a container with N workspaces has N independent stores under `/var/lib/rp/shadow/`. Survives `rp stop`/`start`; wiped on `rp destroy`.
 _Avoid_: overlay store, private store.
 
 **Passthrough**:
@@ -19,8 +19,16 @@ A path NOT matched by any `.rp/shadow` rule. Reads and writes go to the host bin
 _Avoid_: passthrough mount (sounds like a filesystem feature), host-backed.
 
 **Workspace**:
-The container-visible directory where the FUSE-shadowed view of the host workspace lives. Composed by `rp-fuse` from passthrough paths (host-backed) plus shadowed paths (store-backed). The host workspace is bind-mounted 1:1 — the path inside the container is the same as the path on the host (e.g. `~/work/proj` shows up as `/Users/me/work/proj` in both places). See ADR-0010 for the mount layout.
+A host directory exposed inside the container as a FUSE-shadowed view (passthrough paths host-backed + shadowed paths store-backed). Bind-mounted 1:1 — the path inside the container is the same as the path on the host (e.g. `~/work/proj` shows up as `/Users/me/work/proj` in both places). A container may have one or more workspaces; each is independently shadowed. See ADR-0010.
 _Avoid_: host workspace, project directory (those name the host-side dir, not the container view).
+
+**Primary workspace**:
+The first workspace in a container's workspace list. Drives image-build inputs (`.rp/config.yaml` for agent / user / resources), the default container name (basename), and the `rp.host_path` label used by the collision check on re-attach. Additional workspaces are equal partners at the FUSE level but invisible to image-build resolution.
+_Avoid_: main workspace, root workspace.
+
+**Read-only workspace**:
+A workspace mounted with `:ro` (e.g. `rp create . /Users/me/docs:ro`). The FUSE layer for that workspace is mounted with the kernel's `ro` flag; writes return EROFS before reaching our handlers. Reads + shadow-rule processing work normally; the shadow store is still allocated but never written to.
+_Avoid_: read-only mount (too generic), frozen workspace.
 
 **Shadow rules**:
 The pattern set in `.rp/shadow` that determines which paths are shadowed. Syntax is a strict subset of `.gitignore`: same anchoring semantics (leading `/` and mid-slash both anchor to root), `*` / `**` / `?` / `[…]` globs, trailing `/` for directory-only. **Negation (`!pattern`) is NOT supported** and is silently skipped with a warning. The container sees the file but cannot modify it (writes return EROFS); only the host can edit the rules.

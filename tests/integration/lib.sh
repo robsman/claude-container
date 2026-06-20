@@ -49,7 +49,7 @@ rp_create_and_start() {
     # Recover from prior failed runs that left state behind.
     container delete --force "$cont" >/dev/null 2>&1 || true
     container image rm -f "$cont:latest-rp" >/dev/null 2>&1 || true
-    "$RP" create "$slug" >/dev/null 2>&1 || fail "rp create $slug failed"
+    "$RP" create --name "$slug" >/dev/null 2>&1 || fail "rp create --name $slug failed"
     remember_container "$cont"
     container start "$cont" >/dev/null 2>&1 || fail "container start $cont failed"
     echo "$cont"

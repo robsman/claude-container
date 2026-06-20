@@ -29,10 +29,15 @@ rp stop                 # pause container
 rp start                # resume container
 rp destroy              # remove container (workspace files untouched)
 
-# Explicit name still works (overrides cwd default)
-rp create my-project
-rp run my-project "prompt"
-rp run --gated my-project
+# Explicit name (--name overrides the cwd-based default)
+rp create --name my-project
+rp run --name my-project -- "prompt"
+rp run --name my-project -- --gated
+
+# Multi-workspace (each PATH is FUSE-shadowed independently). Append :ro
+# for read-only. Container name defaults to basename(first PATH).
+rp create . /Users/me/shared-libs            # cwd + shared-libs, name = basename(cwd)
+rp create /a /b:ro                           # /a writable, /b read-only; name = a
 
 # Info
 rp list                 # all rp-managed containers, status, workspace path
@@ -78,7 +83,7 @@ docs/adr/               — design decisions (ADR-0001..0007)
 - Each container records its mount path as a label (`rp.host_path=<absolute path>`). Interactive recipes verify this label matches the current cwd to prevent collisions — if `rp-claude-code-foo` exists but was created from `~/work/foo`, running `rp run` from `~/personal/foo` aborts with a clear error.
 - The `_ensure` helper recipe is called as a dependency by `shell`/`login`/`run`: it auto-creates the container if missing, runs the collision check, and starts it if stopped.
 - Auth is per-agent: the profile's `manifest.env` declares which host env vars to forward (e.g. `ANTHROPIC_API_KEY` for claude-code); the profile's `login.sh` runs the subscription / interactive auth flow if it exists.
-- `rp create <name> -- <container-args>` passes extra `container` CLI flags (e.g., extra volume mounts, port bindings).
+- `rp create [--name N] [PATH[:ro]...] [-- <container-args>]` aligns with `sbx run`: positional paths become workspaces (1:1 bound, FUSE-shadowed), `:ro` marks a workspace read-only, `--name` overrides the default (basename of first PATH). Extras after `--` flow through to `container create`. Same shape for `rp run`; extras after `--` go to the agent's run script.
 - `rp` defaults to `~/repos/robo-pen`; override with `ROBO_PEN_DIR`.
 - `build-base` builds the foundational `rp-base` image; `build` builds the default `robo-pen-default` image (FROM rp-base). Both use `{{justfile_directory()}}` as the build context so they work regardless of where `rp` was invoked. `rebuild` no-caches both layers.
 - **Per-project images** (ADR-0006 + ADR-0007): every workspace goes through the overlay. `scripts/build-project-image.sh` reads `.rp/config.yaml` for `image:` / `build:` (defaults to `robo-pen-default`) and the agent profile (defaults to `claude-code`), then composes a final image tagged `<container-name>:latest-rp`. The overlay installs fuse3, validates/creates the configured user, mkdir's `/var/lib/rp` at 0700, COPYs `rp-fuse` + `rp-init.sh` from the locally-tagged `rp-base`, COPYs the agent profile's install.sh / settings / instructions / run scripts, runs install.sh as the configured user, and concatenates `/etc/rp/instructions/*.md` into the agent's `instructions_dst`.

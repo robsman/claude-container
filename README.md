@@ -60,8 +60,9 @@ rp lint                   # check .rp/{shadow,config.yaml,agents/} in cwd
 Pass an explicit name as the last argument if you want a different name from the folder basename:
 
 ```bash
-rp create my-name
-rp run my-name "summarize the README"
+rp create --name my-name                       # explicit container name
+rp create . /Users/me/docs:ro                  # multi-workspace + read-only
+rp run --name my-name -- "summarize the README"
 ```
 
 ---
@@ -220,7 +221,7 @@ rp destroy && rp run     # rebuilds the project image + reapplies config
 Set `RP_DEBUG=1` in the host shell when creating the container to enable verbose FUSE logging inside rp-fuse, plus dumping the generated overlay Dockerfile to stderr:
 
 ```bash
-RP_DEBUG=1 rp create myname    # forwarded into the container as -e RP_DEBUG=1
+RP_DEBUG=1 rp create --name myname    # forwarded into the container as -e RP_DEBUG=1
 rp logs myname                  # the verbose stream
 ```
 
@@ -288,6 +289,19 @@ rp destroy && rp create
 ```
 
 No workspace data is touched; only the container is rebuilt. See ADR-0010 for the layout.
+
+### Upgrading across the sbx-aligned CLI (2026-06-20)
+
+The container name is no longer a positional arg on `rp create` / `rp run`. Positional args are now workspace paths (default `.`); the container name comes from `--name` (overrides the default basename(first PATH)). Append `:ro` to a path to mount that workspace read-only. Multi-workspace shipped at the same time.
+
+| Before | After |
+|---|---|
+| `rp create my-name` | `rp create --name my-name` |
+| `rp run my-name "prompt"` | `rp run --name my-name -- "prompt"` |
+| `rp create my-name -- -v /extra:/extra` | `rp create --name my-name . /extra` (1:1 implicit) — or `--name my-name -- -v /extra:/extra` for raw flags |
+| (single workspace at /workspace) | `rp create . /Users/me/docs:ro` (multi-workspace + read-only) |
+
+Existing containers keep working; only the next `rp create` / `rp run` invocation needs the new shape.
 
 ---
 

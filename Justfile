@@ -147,143 +147,192 @@ init *FLAGS:
 
 # ── Container lifecycle ───────────────────────────────────────────
 
-# Internal: auto-create container if missing (bound to cwd), else verify its
-# recorded host_path label matches cwd. Then ensure it is running. Called as
-# a dependency by interactive recipes.
-_ensure name=host_name:
+# Internal: auto-create container if missing (using context resolved by
+# the rp wrapper via RP_NAME / RP_PATHS_RAW env vars; cwd fallback if
+# called via `just` directly), else verify its recorded host_path label
+# matches the primary workspace path. Then ensure it is running. Called
+# as a dependency by interactive recipes.
+_ensure:
     #!/usr/bin/env bash
     set -euo pipefail
-    if ! container list -a -q | grep -qx "{{prefix}}{{name}}"; then
-        # build-project-image.sh always produces a tag: it overlays rp-bits +
-        # the configured agent profile onto the user's chosen base (image:,
-        # build:, .rp/Dockerfile, or the global default).
-        IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
-        eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    if ! container list -a -q | grep -qx "$CONT_NAME"; then
+        # build-project-image.sh overlays rp-bits + the configured agent
+        # profile onto the user's chosen base. The image tag is derived
+        # from the container name.
+        IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
+        eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "$WS_PRIMARY" )"
         if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
             echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2
             echo "    is enough for the agent shell but tight for typical builds (npm install, cargo, pip)." >&2
             echo "    Add resources.memory: 8G to .rp/config.yaml + 'rp destroy && rp create' to raise it." >&2
         fi
+        # Build -v args from WS_LIST_TSV (one entry per tab, each "path[:ro]";
+        # container's -v doesn't take :ro — FUSE handles ro inside).
+        bind_args=()
+        IFS=$'\t' read -r -a ws_entries <<<"${WS_LIST_TSV%$'\t'}"
+        for entry in "${ws_entries[@]}"; do
+            p=${entry%:ro}
+            bind_args+=(-v "$p:$p")
+        done
+        # Extras from RP_EXTRA_ARGS_RAW (after `--` on the CLI), tab-separated.
+        extra_args=()
+        if [ -n "$EXTRA_TSV" ]; then
+            IFS=$'\t' read -r -a extra_args <<<"${EXTRA_TSV%$'\t'}"
+        fi
         container create \
-            --name {{prefix}}{{name}} \
+            --name "$CONT_NAME" \
             --cap-add SYS_ADMIN \
-            -l "rp.host_path={{host_dir}}" \
-            -l "rp.agent={{agent}}" \
+            -l "rp.host_path=$WS_PRIMARY" \
+            -l "rp.agent=$AGENT" \
             -l rp.managed=true \
             $CONTAINER_ENV \
             $CREATE_FLAGS \
-            -e "RP_WORKSPACE={{host_dir}}" \
-            -v "{{host_dir}}:{{host_dir}}" \
+            -e "RP_WORKSPACE=$RP_WORKSPACE_ENV" \
+            "${bind_args[@]}" \
+            "${extra_args[@]}" \
             "$IMAGE_TAG" > /dev/null
-        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
+        echo "Auto-created container $CONT_NAME -> $WS_PRIMARY (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
     else
-        recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
-        if [ -n "$recorded" ] && [ "$recorded" != "{{host_dir}}" ]; then
-            echo "ERROR: container {{prefix}}{{name}} is bound to: $recorded" >&2
-            echo "       current directory is:               {{host_dir}}" >&2
+        recorded=$(container inspect "$CONT_NAME" 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+        if [ -n "$recorded" ] && [ "$recorded" != "$WS_PRIMARY" ]; then
+            echo "ERROR: container $CONT_NAME is bound to: $recorded" >&2
+            echo "       requested primary workspace is:   $WS_PRIMARY" >&2
             echo "" >&2
             echo "Either cd into the recorded path, or use an explicit name:" >&2
-            echo "  rp <recipe> <other-name>" >&2
+            echo "  rp <recipe> --name <other-name>" >&2
             exit 1
         fi
     fi
-    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
+    state=$(container inspect "$CONT_NAME" 2>/dev/null | jq -r '.[0].status.state' || true)
     if [ "$state" != "running" ]; then
-        container start {{prefix}}{{name}} > /dev/null
+        container start "$CONT_NAME" > /dev/null
     fi
 
-# Create a new container, bind-mounting the current directory 1:1 (the host
-# path is the in-container path; see ADR-0010 workspace-discovery section).
-create name=host_name *CONTAINER_ARGS:
+# Create a new container with one or more workspaces bound 1:1 (host path
+# = container path). The rp wrapper translates CLI positional paths +
+# --name into RP_NAME / RP_PATHS_RAW env vars consumed here. See ADR-0010.
+create:
     #!/usr/bin/env bash
     set -euo pipefail
-    if container list -a -q | grep -qx "{{prefix}}{{name}}"; then
-        echo "Container {{prefix}}{{name}} already exists. Use 'rp destroy {{name}}' first."
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    if container list -a -q | grep -qx "$CONT_NAME"; then
+        echo "Container $CONT_NAME already exists. Use 'rp destroy --name $NAME' first."
         exit 1
     fi
-    IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
-    eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
+    IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
+    eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "$WS_PRIMARY" )"
     if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
         echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2
         echo "    is enough for the agent shell but tight for typical builds (npm install, cargo, pip)." >&2
         echo "    Add resources.memory: 8G to .rp/config.yaml + 'rp destroy && rp create' to raise it." >&2
     fi
+    bind_args=()
+    IFS=$'\t' read -r -a ws_entries <<<"${WS_LIST_TSV%$'\t'}"
+    for entry in "${ws_entries[@]}"; do
+        p=${entry%:ro}
+        bind_args+=(-v "$p:$p")
+    done
+    extra_args=()
+    if [ -n "$EXTRA_TSV" ]; then
+        IFS=$'\t' read -r -a extra_args <<<"${EXTRA_TSV%$'\t'}"
+    fi
     container create \
-        --name {{prefix}}{{name}} \
+        --name "$CONT_NAME" \
         --cap-add SYS_ADMIN \
-        -l "rp.host_path={{host_dir}}" \
-        -l "rp.agent={{agent}}" \
+        -l "rp.host_path=$WS_PRIMARY" \
+        -l "rp.agent=$AGENT" \
         -l rp.managed=true \
         $CONTAINER_ENV \
         $CREATE_FLAGS \
-        -e "RP_WORKSPACE={{host_dir}}" \
-            -v "{{host_dir}}:{{host_dir}}" \
-        {{CONTAINER_ARGS}} \
+        -e "RP_WORKSPACE=$RP_WORKSPACE_ENV" \
+        "${bind_args[@]}" \
+        "${extra_args[@]}" \
         "$IMAGE_TAG"
-    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
+    echo "Container $CONT_NAME created. Workspaces: $RP_WORKSPACE_ENV (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
 
 # Start a stopped container
-start name=host_name:
-    container start {{prefix}}{{name}}
+start:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    container start "$CONT_NAME"
 
 # Stop a running container
-stop name=host_name:
-    container stop {{prefix}}{{name}}
+stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    container stop "$CONT_NAME"
 
 # Restart a container
-restart name=host_name:
-    container restart {{prefix}}{{name}}
+restart:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    container restart "$CONT_NAME"
 
 # Open a shell (auto-creates / auto-starts as needed)
-shell name=host_name: (_ensure name)
+shell: _ensure
     #!/usr/bin/env bash
     set -euo pipefail
-    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
-    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} bash
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    ws=$(container inspect "$CONT_NAME" 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u "$USER_NAME" --workdir "$ws" "$CONT_NAME" bash
 
 # Log in to the agent (Claude subscription flow opens a URL to authenticate)
-login name=host_name: (_ensure name)
+login: _ensure
     #!/usr/bin/env bash
     set -euo pipefail
-    if ! container exec -u {{user}} {{prefix}}{{name}} test -x /usr/local/lib/rp/login.sh 2>/dev/null; then
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    if ! container exec -u "$USER_NAME" "$CONT_NAME" test -x /usr/local/lib/rp/login.sh 2>/dev/null; then
         echo "agent profile has no login flow" >&2
         exit 1
     fi
-    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
-    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} /usr/local/lib/rp/login.sh
+    ws=$(container inspect "$CONT_NAME" 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u "$USER_NAME" --workdir "$ws" "$CONT_NAME" /usr/local/lib/rp/login.sh
 
 # Run the agent. Default mode = bypass-permissions (the container is the
-# safety boundary). Pass --gated as the FIRST positional arg to dispatch to
+# safety boundary). Extras after `--` on the rp CLI are passed to the
+# agent's run script. Pass --gated as the FIRST extra to dispatch to
 # the profile's run-gated.sh (permission-prompted) script instead.
-run name=host_name *ARGS: (_ensure name)
+run: _ensure
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    args=()
+    if [ -n "$EXTRA_TSV" ]; then
+        IFS=$'\t' read -r -a args <<<"${EXTRA_TSV%$'\t'}"
+    fi
     script=/usr/local/lib/rp/run.sh
-    args=( {{ARGS}} )
     if [ "${args[0]:-}" = "--gated" ]; then
         script=/usr/local/lib/rp/run-gated.sh
         args=( "${args[@]:1}" )
-        if ! container exec -u {{user}} {{prefix}}{{name}} test -x "$script" 2>/dev/null; then
+        if ! container exec -u "$USER_NAME" "$CONT_NAME" test -x "$script" 2>/dev/null; then
             echo "agent profile is bypass-only (no run-gated.sh)" >&2
             exit 1
         fi
     fi
-    ws=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
-    container exec -it -u {{user}} --workdir "$ws" {{prefix}}{{name}} "$script" "${args[@]}"
+    ws=$(container inspect "$CONT_NAME" 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
+    container exec -it -u "$USER_NAME" --workdir "$ws" "$CONT_NAME" "$script" "${args[@]}"
 
 # Copy files from host to container
 cp-to name src dest:
-    container cp {{src}} {{prefix}}{{name}}:{{dest}}
+    container cp {{src}} {{name}}:{{dest}}
 
 # Copy files from container to host
 cp-from name src dest:
-    container cp {{prefix}}{{name}}:{{src}} {{dest}}
+    container cp {{name}}:{{src}} {{dest}}
 
 # Stop and remove a container (workspace files on host untouched)
-destroy name=host_name:
-    -container stop {{prefix}}{{name}} 2>/dev/null
-    container delete {{prefix}}{{name}}
-    @echo "Container {{prefix}}{{name}} removed. Workspace files on host untouched."
+destroy:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    container stop "$CONT_NAME" 2>/dev/null || true
+    container delete "$CONT_NAME"
+    container image rm -f "$IMAGE_TAG" 2>/dev/null || true
+    echo "Container $CONT_NAME removed. Workspace files on host untouched."
 
 # ── Info / diagnostics ────────────────────────────────────────────
 
@@ -305,8 +354,11 @@ list:
     } | column -t -s $'\t'
 
 # Show container logs
-logs name=host_name:
-    container logs {{prefix}}{{name}}
+logs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
+    container logs "$CONT_NAME"
 
 # Show resource usage for all containers
 stats:

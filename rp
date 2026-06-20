@@ -1,13 +1,14 @@
 #!/usr/bin/env zsh
 # rp — robo-pen wrapper
-# Runs robo-pen just recipes from anywhere; the caller's cwd is the workspace.
+#
+# Sandbox-aligned CLI: `rp create [--name N] [PATH[:ro]...] [-- ARGS]`.
+# Multiple PATHs map to independent FUSE-shadowed workspaces (each bound
+# 1:1 host-path-to-container-path). `:ro` suffix marks a workspace
+# read-only. Container name defaults to basename of the first PATH; --name
+# overrides. See ADR-0010 for the workspace + mount model.
 
 set -euo pipefail
 
-# Default ROBO_PEN_DIR to the directory this script lives in. Resolves
-# symlinks (so symlinking ~/bin/rp -> /path/to/robo-pen/rp still finds the
-# Justfile). Export ROBO_PEN_DIR to override, e.g. for development checkouts
-# or running multiple copies side-by-side.
 SCRIPT_PATH="${(%):-%x}"
 SCRIPT_PATH="${SCRIPT_PATH:A}"
 ROBO_PEN_DIR="${ROBO_PEN_DIR:-${SCRIPT_PATH:h}}"
@@ -18,53 +19,178 @@ if [[ ! -f "$ROBO_PEN_DIR/Justfile" ]]; then
     exit 1
 fi
 
+usage() {
+    cat <<EOF
+Usage:
+  rp create [--name N] [PATH[:ro]...] [-- CONTAINER_FLAGS...]
+  rp run    [--name N] [PATH[:ro]...] [-- AGENT_ARGS...]
+  rp shell    [--name N]
+  rp login    [--name N]
+  rp destroy  [--name N]
+  rp start    [--name N]
+  rp stop     [--name N]
+  rp restart  [--name N]
+  rp logs     [--name N]
+  rp init [--force]
+  rp lint
+  rp list | rp stats
+  rp build | rp build-base | rp build-host | rp rebuild
+  rp setup | rp service-start | rp service-stop
+
+Workspace conventions:
+  * PATH defaults to "." (cwd) for create/run.
+  * Multiple PATHs become independent FUSE-shadowed workspaces.
+  * Append ":ro" to a PATH to mount that workspace read-only.
+  * Container name defaults to basename(first PATH); --name overrides.
+
+Run 'rp --recipes' for the full just-recipe list.
+EOF
+}
+
 if [[ $# -eq 0 ]]; then
-    echo "Usage: rp <recipe> [args...]"
-    echo ""
-    echo "Examples (cwd-anchored — container name = rp-<agent>-<basename of \$PWD>):"
-    echo "  cd ~/my-repo && rp run           Auto-create/start container, run the agent"
-    echo "  rp run --gated                   Run the agent in permission-gated mode"
-    echo "  rp shell                         Open a shell into the cwd container"
-    echo "  rp login                         Run the agent's login flow"
-    echo "  rp destroy                       Remove the cwd container"
-    echo ""
-    echo "Explicit name overrides the cwd-based default:"
-    echo "  rp build                         Build the default base image"
-    echo "  rp create my-project             Create a container for my-project"
-    echo "  rp run my-project \"prompt\"       Run the agent with a prompt"
-    echo "  rp list                          List all rp-managed containers"
-    echo "  rp stats                         Show resource usage"
-    echo "  rp lint                          Validate .rp/{shadow,config.yaml,agents/}"
-    echo ""
-    echo "Run 'rp --recipes' to see all available recipes."
+    usage
     exit 0
 fi
 
-if [[ "$1" == "--recipes" ]]; then
-    just --justfile "$ROBO_PEN_DIR/Justfile" --list
-    exit 0
+case "$1" in
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+    --recipes)
+        just --justfile "$ROBO_PEN_DIR/Justfile" --list
+        exit 0
+        ;;
+    lint)
+        shift
+        HOST_BIN="$ROBO_PEN_DIR/rp-fuse/rp-fuse-darwin-arm64"
+        if [[ ! -x "$HOST_BIN" ]]; then
+            echo "rp lint: host binary missing at $HOST_BIN" >&2
+            echo "Run 'rp build-host' to cross-build it (one-time setup)." >&2
+            exit 1
+        fi
+        if ! printf '%s\n' "$@" | grep -q -e '--repo-dir'; then
+            set -- --repo-dir "$ROBO_PEN_DIR" "$@"
+        fi
+        exec "$HOST_BIN" lint "$@"
+        ;;
+esac
+
+# Recipes that take the new workspace-aware CLI (positional paths +
+# --name + -- ARGS).
+WORKSPACE_RECIPES=(create run)
+# Recipes that operate on an existing container by name (--name optional;
+# defaults to basename(cwd)).
+NAMED_RECIPES=(shell login destroy start stop restart logs)
+
+recipe="$1"; shift
+
+is_workspace_recipe=0
+for r in $WORKSPACE_RECIPES; do
+    [[ "$recipe" == "$r" ]] && { is_workspace_recipe=1; break }
+done
+is_named_recipe=0
+for r in $NAMED_RECIPES; do
+    [[ "$recipe" == "$r" ]] && { is_named_recipe=1; break }
+done
+
+if (( ! is_workspace_recipe && ! is_named_recipe )); then
+    # Pass-through for everything else (build, list, init, etc.).
+    exec just --justfile "$ROBO_PEN_DIR/Justfile" "$recipe" "$@"
 fi
 
-# `rp lint` runs the host-side rp-fuse binary against the .rp/* in the
-# caller's cwd. No container start required.
-if [[ "$1" == "lint" ]]; then
-    shift
-    HOST_BIN="$ROBO_PEN_DIR/rp-fuse/rp-fuse-darwin-arm64"
-    if [[ ! -x "$HOST_BIN" ]]; then
-        echo "rp lint: host binary missing at $HOST_BIN" >&2
-        echo "Run 'rp build-host' to cross-build it (one-time setup)." >&2
-        exit 1
+# Parse the new CLI.
+name=""
+paths=()
+extras=()
+seen_dash=0
+
+while [[ $# -gt 0 ]]; do
+    if (( seen_dash )); then
+        extras+=("$1")
+        shift
+        continue
     fi
-    # Pass --repo-dir so lint can resolve the agent profile bundle (built-ins
-    # live under $ROBO_PEN_DIR/agent.profiles/). Skipped if the user already
-    # supplied --repo-dir or an explicit shadow path.
-    if ! printf '%s\n' "$@" | grep -q -e '--repo-dir'; then
-        set -- --repo-dir "$ROBO_PEN_DIR" "$@"
+    case "$1" in
+        --name)
+            shift
+            [[ $# -gt 0 ]] || { echo "rp: --name needs a value" >&2; exit 2 }
+            name="$1"
+            shift
+            ;;
+        --name=*)
+            name="${1#--name=}"
+            shift
+            ;;
+        --)
+            seen_dash=1
+            shift
+            ;;
+        -*)
+            echo "rp $recipe: unknown flag $1 (forwarded args go after '--')" >&2
+            exit 2
+            ;;
+        *)
+            paths+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if (( is_named_recipe )); then
+    # Named recipes don't take PATHs.
+    if [[ ${#paths[@]} -gt 0 ]]; then
+        echo "rp $recipe: does not take PATH args; use --name to identify the container" >&2
+        exit 2
     fi
-    exec "$HOST_BIN" lint "$@"
+    if [[ ${#extras[@]} -gt 0 ]]; then
+        echo "rp $recipe: no extra args allowed after '--'" >&2
+        exit 2
+    fi
+    if [[ -z "$name" ]]; then
+        # Default: basename of cwd.
+        name="$(basename "$(pwd -P)")"
+    fi
+    export RP_NAME="$name"
+    exec just --justfile "$ROBO_PEN_DIR/Justfile" "$recipe"
 fi
 
-# Note: --working-directory is intentionally NOT set, so that just's
-# `invocation_directory()` returns the caller's actual cwd, enabling
-# cwd-anchored container mounts.
-exec just --justfile "$ROBO_PEN_DIR/Justfile" "$@"
+# Workspace recipes: parse + canonicalise PATHs.
+if [[ ${#paths[@]} -eq 0 ]]; then
+    paths=(".")
+fi
+
+canon_paths=()
+for entry in $paths; do
+    if [[ "$entry" == *:ro ]]; then
+        raw="${entry%:ro}"
+        canon=$(cd "$raw" 2>/dev/null && pwd -P) || { echo "rp: PATH '$raw' is not a directory" >&2; exit 2; }
+        canon_paths+=("${canon}:ro")
+    else
+        canon=$(cd "$entry" 2>/dev/null && pwd -P) || { echo "rp: PATH '$entry' is not a directory" >&2; exit 2; }
+        canon_paths+=("$canon")
+    fi
+done
+
+# Default name = basename of first PATH (with :ro suffix stripped).
+if [[ -z "$name" ]]; then
+    first="${canon_paths[1]}"
+    first="${first%:ro}"
+    name="${first:t}"
+fi
+
+# Hand off to Justfile via env. RP_PATHS_RAW is one entry per line so
+# paths-with-spaces survive intact.
+export RP_NAME="$name"
+RP_PATHS_RAW=""
+for entry in $canon_paths; do
+    RP_PATHS_RAW="${RP_PATHS_RAW}${entry}"$'\n'
+done
+export RP_PATHS_RAW
+RP_EXTRA_ARGS_RAW=""
+for entry in $extras; do
+    RP_EXTRA_ARGS_RAW="${RP_EXTRA_ARGS_RAW}${entry}"$'\n'
+done
+export RP_EXTRA_ARGS_RAW
+
+exec just --justfile "$ROBO_PEN_DIR/Justfile" "$recipe"

@@ -25,7 +25,7 @@ run_case() {
     (
         cd "$ws"
         set +e
-        out=$("$RP" create "$slug" 2>&1)
+        out=$("$RP" create --name "$slug" 2>&1)
         ec=$?
         set -e
         if [ "$expect" = "pass" ] && [ "$ec" -ne 0 ]; then

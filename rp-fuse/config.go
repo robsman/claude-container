@@ -34,6 +34,67 @@ type ProjectConfig struct {
 	StripSudo bool          `yaml:"strip_sudo,omitempty"`
 	Resources *ResourceSpec `yaml:"resources,omitempty"`
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
+	// HostAliases declares host-resolvable names inside the container.
+	// Each entry is either:
+	//   - "name"             → resolves to the runtime's host-gateway
+	//   - {name: x, ip: y}   → resolves to a fixed IP (host-gateway shortcut
+	//                          for the host itself if y == "host-gateway").
+	// `host.containers.internal` is always injected automatically (see
+	// HostAliasesEffective); the user can opt out by listing it with a
+	// negation (`!host.containers.internal`) — TBD.
+	HostAliases []HostAlias `yaml:"host_aliases,omitempty"`
+}
+
+// HostAlias is one entry under host_aliases. Accepts both the short
+// scalar form ("name") and the mapping form ({name, ip}). yaml.v3 calls
+// UnmarshalYAML which we override to handle both shapes.
+type HostAlias struct {
+	Name string `yaml:"name"`
+	IP   string `yaml:"ip,omitempty"` // defaults to "host-gateway" when empty
+}
+
+func (h *HostAlias) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		h.Name = node.Value
+		h.IP = ""
+		return nil
+	case yaml.MappingNode:
+		// Use a sidecar type so we don't recurse into UnmarshalYAML.
+		type aliasMap struct {
+			Name string `yaml:"name"`
+			IP   string `yaml:"ip,omitempty"`
+		}
+		var m aliasMap
+		if err := node.Decode(&m); err != nil {
+			return err
+		}
+		h.Name = m.Name
+		h.IP = m.IP
+		return nil
+	}
+	return fmt.Errorf("host_aliases entry: expected scalar or mapping, got %v", node.Kind)
+}
+
+// HostAliasesEffective returns the configured aliases plus the always-on
+// `host.containers.internal` (unless already present in the config).
+// Effective IP defaults to "host-gateway" — the magic value the container
+// runtime resolves to the host's gateway IP.
+func (c *ProjectConfig) HostAliasesEffective() []HostAlias {
+	out := make([]HostAlias, 0, len(c.HostAliases)+1)
+	seen := map[string]bool{}
+	for _, a := range c.HostAliases {
+		ip := a.IP
+		if ip == "" {
+			ip = "host-gateway"
+		}
+		out = append(out, HostAlias{Name: a.Name, IP: ip})
+		seen[a.Name] = true
+	}
+	if !seen["host.containers.internal"] {
+		out = append(out, HostAlias{Name: "host.containers.internal", IP: "host-gateway"})
+	}
+	return out
 }
 
 // DefaultAgent is the profile used when .rp/config.yaml does not set `agent:`.
@@ -137,6 +198,72 @@ func (c *ProjectConfig) Validate() error {
 	if c.Fuse != nil && c.Fuse.Cache != nil {
 		if *c.Fuse.Cache < 0 {
 			return fmt.Errorf("config: fuse.cache: must be ≥ 0, got %g", *c.Fuse.Cache)
+		}
+	}
+	for i, a := range c.HostAliases {
+		if err := validateHostName(a.Name); err != nil {
+			return fmt.Errorf("config: host_aliases[%d].name: %w", i, err)
+		}
+		if a.IP != "" && a.IP != "host-gateway" {
+			if err := validateIP(a.IP); err != nil {
+				return fmt.Errorf("config: host_aliases[%d].ip: %w", i, err)
+			}
+		}
+	}
+	return nil
+}
+
+// validateHostName accepts hostnames per RFC 952/1123 letters/digits/hyphens,
+// dot-separated labels. Length-capped at 253 (DNS max).
+func validateHostName(s string) error {
+	if s == "" {
+		return errors.New("empty hostname")
+	}
+	if len(s) > 253 {
+		return fmt.Errorf("hostname %q exceeds 253 chars", s)
+	}
+	for _, label := range strings.Split(s, ".") {
+		if label == "" {
+			return fmt.Errorf("hostname %q has empty label (consecutive dots / leading or trailing dot)", s)
+		}
+		if len(label) > 63 {
+			return fmt.Errorf("hostname label %q exceeds 63 chars", label)
+		}
+		for i, r := range label {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+				continue
+			case r >= '0' && r <= '9':
+				continue
+			case r == '-' && i > 0 && i < len(label)-1:
+				continue
+			}
+			return fmt.Errorf("invalid character %q in hostname label %q", r, label)
+		}
+	}
+	return nil
+}
+
+// validateIP accepts IPv4 dotted quad. We deliberately don't accept IPv6 yet —
+// Apple Container's --add-host arg format for v6 needs verification first.
+func validateIP(s string) error {
+	parts := strings.Split(s, ".")
+	if len(parts) != 4 {
+		return fmt.Errorf("expected IPv4 dotted-quad, got %q", s)
+	}
+	for _, p := range parts {
+		if p == "" || len(p) > 3 {
+			return fmt.Errorf("invalid octet %q in %q", p, s)
+		}
+		n := 0
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				return fmt.Errorf("non-digit %q in IP %q", r, s)
+			}
+			n = n*10 + int(r-'0')
+		}
+		if n > 255 {
+			return fmt.Errorf("octet %d out of range in %q", n, s)
 		}
 	}
 	return nil

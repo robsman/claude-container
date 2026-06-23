@@ -187,6 +187,16 @@ func lintConfig(path string, exitCode *int) *ProjectConfig {
 	if cfg.Fuse != nil && cfg.Fuse.Cache != nil {
 		fmt.Printf("  fuse.cache: %g\n", *cfg.Fuse.Cache)
 	}
+	// Always show the effective host aliases (includes the implicit
+	// host.containers.internal entry) — the user may not know it's added
+	// automatically and lint is the place to surface it.
+	aliases := cfg.HostAliasesEffective()
+	if len(aliases) > 0 {
+		fmt.Printf("  host_aliases:\n")
+		for _, a := range aliases {
+			fmt.Printf("    - %s → %s\n", a.Name, a.IP)
+		}
+	}
 	return cfg
 }
 

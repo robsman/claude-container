@@ -43,6 +43,31 @@ if [ -x "$RP_FUSE" ] && [ -f "$CONFIG" ]; then
     fi
 fi
 
+# Host aliases (`host_aliases:` in config + the always-on
+# `host.containers.internal`). Apple Container has no `--add-host`
+# equivalent, so we forward the list as RP_HOST_ALIASES and let
+# rp-init.sh append /etc/hosts entries at startup. The literal
+# "host-gateway" gets resolved to the default-route gateway IP inside
+# the container.
+#
+# Format: comma-separated `name=ip` pairs (no whitespace).
+if [ -x "$RP_FUSE" ]; then
+    aliases=$("$RP_FUSE" config --file "$CONFIG" field host_aliases 2>/dev/null || true)
+    if [ -n "$aliases" ]; then
+        joined=""
+        while IFS='=' read -r alias_name alias_ip; do
+            [ -z "$alias_name" ] && continue
+            if [ -n "$joined" ]; then
+                joined="${joined},"
+            fi
+            joined="${joined}${alias_name}=${alias_ip}"
+        done <<<"$aliases"
+        if [ -n "$joined" ]; then
+            CONTAINER_ENV="$CONTAINER_ENV -e RP_HOST_ALIASES=$joined"
+        fi
+    fi
+fi
+
 # Forward the configured container user so rp-init.sh can re-validate the
 # shadow-boundary invariants (uid != 0, not in sudoers) at runtime — ADR-0008
 # invariant 3 belt-and-braces.

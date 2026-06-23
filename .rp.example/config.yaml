@@ -82,6 +82,23 @@
 # fuse:
 #   cache: 1.0
 
+# ── Host aliases ──────────────────────────────────────────────────
+# Inject /etc/hosts entries inside the container so processes can resolve
+# well-known names. `host.containers.internal` → the host's gateway IP
+# is ALWAYS injected automatically (matches the convention used by
+# Podman / Docker / ai-pod); you don't need to list it here. Anything
+# you add is appended.
+#
+# Each entry is either:
+#   - "name"                        → IP = host-gateway (the host itself)
+#   - { name: NAME, ip: IP }        → IP = a fixed IPv4 (e.g. a host LAN
+#                                     service the container should reach)
+#
+# host_aliases:
+#   - mac.local                       # additional alias for the host
+#   - name: postgres.dev
+#     ip: 192.168.64.10               # a service on the host LAN
+
 # ── Constraints (v1) ───────────────────────────────────────────────
 # - Base image must be Debian/Ubuntu-derived. rp probes for /etc/debian_version
 #   before building the overlay; Alpine, RHEL, Arch, distroless bases are

@@ -297,3 +297,66 @@ func TestParseProjectConfig_FromFile(t *testing.T) {
 		t.Errorf("image = %q", cfg.Image)
 	}
 }
+
+func TestParseProjectConfig_HostAliasesScalar(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("host_aliases:\n  - mac.local\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostAliases) != 1 {
+		t.Fatalf("expected 1 alias, got %v", cfg.HostAliases)
+	}
+	if cfg.HostAliases[0].Name != "mac.local" || cfg.HostAliases[0].IP != "" {
+		t.Errorf("scalar alias = %+v, want {Name:mac.local IP:}", cfg.HostAliases[0])
+	}
+}
+
+func TestParseProjectConfig_HostAliasesMapping(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("host_aliases:\n  - name: postgres.dev\n    ip: 192.168.64.10\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostAliases) != 1 {
+		t.Fatalf("expected 1 alias, got %v", cfg.HostAliases)
+	}
+	want := HostAlias{Name: "postgres.dev", IP: "192.168.64.10"}
+	if cfg.HostAliases[0] != want {
+		t.Errorf("mapping alias = %+v, want %+v", cfg.HostAliases[0], want)
+	}
+}
+
+func TestHostAliasesEffective_AlwaysIncludesGateway(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := cfg.HostAliasesEffective()
+	if len(effective) != 1 || effective[0].Name != "host.containers.internal" || effective[0].IP != "host-gateway" {
+		t.Errorf("empty config effective = %+v, want [host.containers.internal=host-gateway]", effective)
+	}
+}
+
+func TestHostAliasesEffective_UserCanShadowDefault(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("host_aliases:\n  - name: host.containers.internal\n    ip: 10.0.0.1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := cfg.HostAliasesEffective()
+	if len(effective) != 1 || effective[0].IP != "10.0.0.1" {
+		t.Errorf("user override = %+v, want IP=10.0.0.1", effective)
+	}
+}
+
+func TestParseProjectConfig_RejectBadHostAlias(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("host_aliases:\n  - \"bad name with spaces\"\n"))
+	if err == nil {
+		t.Error("expected error on hostname with spaces")
+	}
+}
+
+func TestParseProjectConfig_RejectBadIP(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("host_aliases:\n  - name: x.local\n    ip: 999.0.0.1\n"))
+	if err == nil {
+		t.Error("expected error on out-of-range IPv4 octet")
+	}
+}

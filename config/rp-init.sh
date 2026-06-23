@@ -213,6 +213,73 @@ if [ ! -e /dev/fuse ]; then
     fi
 fi
 
+# Host aliases — append /etc/hosts entries so the container user can
+# resolve well-known names (host.containers.internal, user-supplied
+# aliases from .rp/config.yaml). Apple Container has no --add-host
+# equivalent, so we do this from PID 1 where we still have root +
+# can edit /etc/hosts. RP_HOST_ALIASES is comma-separated `name=ip`
+# pairs; the literal "host-gateway" resolves to the container's default
+# gateway (which is the host on virtio/fakeowner setups).
+if [ -n "${RP_HOST_ALIASES:-}" ]; then
+    # Read the default gateway from /proc/net/route. Lines are tab-separated:
+    #   Iface  Destination  Gateway  Flags  …
+    # `00000000` in column 2 = the default route. Column 3 is the gateway
+    # IPv4 as 8 hex chars in little-endian byte order. We avoid the `ip`
+    # tool (iproute2) and gawk-only functions (strtonum) so we don't
+    # depend on either being installed in the user's image.
+    #
+    # The default route appears asynchronously: Apple Container brings
+    # the network up after PID 1 starts running. Poll for up to ~3s so
+    # `host-gateway` aliases resolve on first boot too (subsequent
+    # restarts find it immediately).
+    read_gateway() {
+        local hex=""
+        while IFS=$'\t ' read -r _ dest gw _; do
+            if [ "$dest" = "00000000" ]; then
+                hex=$gw
+                break
+            fi
+        done < <(tail -n +2 /proc/net/route 2>/dev/null)
+        [ -z "$hex" ] && return 1
+        # Hex is BE-printed little-endian bytes: "0140A8C0" → bytes 01 40 A8 C0
+        # → IPv4 192.168.64.1.
+        printf '%d.%d.%d.%d' \
+            "$((16#${hex:6:2}))" \
+            "$((16#${hex:4:2}))" \
+            "$((16#${hex:2:2}))" \
+            "$((16#${hex:0:2}))"
+    }
+    gateway=""
+    # 30 × 0.1s = ~3s ceiling; in practice the route appears within ~200ms.
+    for _ in $(seq 1 30); do
+        if g=$(read_gateway); then
+            gateway=$g
+            break
+        fi
+        sleep 0.1
+    done
+    # Strip any prior rp-managed entries so re-launches stay idempotent.
+    if [ -w /etc/hosts ]; then
+        sed -i '/# rp-host-alias$/d' /etc/hosts 2>/dev/null || true
+        IFS=',' read -ra aliases <<<"$RP_HOST_ALIASES"
+        for entry in "${aliases[@]}"; do
+            name=${entry%%=*}
+            ip=${entry#*=}
+            if [ "$ip" = "host-gateway" ]; then
+                if [ -z "$gateway" ]; then
+                    echo "rp-init: WARN no default route, skipping alias $name=host-gateway" >&2
+                    continue
+                fi
+                ip=$gateway
+            fi
+            echo "$ip $name # rp-host-alias" >> /etc/hosts
+            echo "rp-init: /etc/hosts $name -> $ip" >&2
+        done
+    else
+        echo "rp-init: WARN /etc/hosts not writable; host aliases dropped" >&2
+    fi
+fi
+
 # Per-workspace: unwind → capture fd → tmpfs cover. Build the rp-fuse argv
 # along the way (one `--workspace path=fd[:ro]` per entry).
 FUSE_ARGS=()

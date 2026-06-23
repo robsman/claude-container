@@ -150,6 +150,15 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "", nil
 		}
 		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", *c.Fuse.Cache), "0"), "."), nil
+	case "host_aliases":
+		// One alias per line: "name=ip". Always includes the implicit
+		// `host.containers.internal=host-gateway` entry. Shell consumers
+		// can `while read line; do …; done` over this.
+		var out []string
+		for _, a := range c.HostAliasesEffective() {
+			out = append(out, fmt.Sprintf("%s=%s", a.Name, a.IP))
+		}
+		return strings.Join(out, "\n"), nil
 	}
 	return "", fmt.Errorf("unknown field %q", name)
 }

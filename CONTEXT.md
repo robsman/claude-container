@@ -48,6 +48,10 @@ _Avoid_: container image, per-repo image.
 The thin layer always applied on top of a user's chosen image. Validates (or creates) the container user, ensures `/etc/fuse.conf` allows non-root mounts, creates `/var/lib/rp` at mode 0700, copies `rp-fuse` + `rp-init.sh` from the base image, and runs the configured agent profile's install + instruction-compose. The layer is what makes any user image runnable as a rp container.
 _Avoid_: rp layer, decorator layer.
 
+**Host alias**:
+An `/etc/hosts` entry inside the container that resolves a chosen name to either the container's default gateway (the host) or a fixed IPv4. Declared in `.rp/config.yaml` under `host_aliases:`. `host.containers.internal` is always injected automatically (matches ai-pod / Podman / Docker convention). Apple Container has no `--add-host` equivalent, so init.sh appends entries to `/etc/hosts` after the network is up — see ADR-0013.
+_Avoid_: host gateway alias (overspecific), host bind (already a workspace term).
+
 **Container user**:
 The unprivileged identity the container runs interactive sessions as. Defaults to `coder`, created by the rp overlay with an auto-assigned uid (≠ 0). May be overridden via `.rp/config.yaml`'s `user:` field — either adopting an existing user from the base image or naming a fresh user to be created. rp enforces the invariant that the chosen user has uid ≠ 0 and is not listed in any sudoers file; build fails otherwise.
 _Avoid_: workspace user, exec user.

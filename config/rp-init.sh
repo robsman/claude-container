@@ -352,10 +352,24 @@ if [ -n "${RP_VOLUMES:-}" ] && [ -n "${RP_USER:-}" ]; then
             echo "rp-init: WARN volume mount $mount_path missing; skipping" >&2
             continue
         fi
-        # Seed empty volumes from the image stash.
-        if [ -z "$(ls -A "$mount_path" 2>/dev/null)" ] && [ -d "$seed_root/$vol_name" ]; then
-            echo "rp-init: seeding volume $vol_name from $seed_root/$vol_name → $mount_path" >&2
-            cp -a "$seed_root/$vol_name/." "$mount_path/" 2>/dev/null || true
+        # Merge-seed: for each file in the image stash, copy it into the
+        # mounted volume IF the destination is missing. Existing files in
+        # the volume (agent writes from a prior session, host_files
+        # overrides) are preserved. New seed files (e.g. plugins added in
+        # a profile update + image rebuild) get pulled in on next create.
+        # Cost: one find walk per create, only on volumes the profile
+        # actually stashed seed content for.
+        if [ -d "$seed_root/$vol_name" ]; then
+            (cd "$seed_root/$vol_name" && find . \( -type f -o -type l \) -print) \
+                | while IFS= read -r rel; do
+                    rel=${rel#./}
+                    target="$mount_path/$rel"
+                    if [ ! -e "$target" ]; then
+                        mkdir -p "$(dirname "$target")"
+                        cp -a "$seed_root/$vol_name/$rel" "$target"
+                    fi
+                done
+            echo "rp-init: merge-seeded volume $vol_name from $seed_root/$vol_name" >&2
         fi
         chown -R "$RP_USER:$RP_USER" "$mount_path" 2>/dev/null || true
     done

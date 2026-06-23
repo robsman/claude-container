@@ -194,6 +194,16 @@ func profileManifestField(m *ProfileManifest, name string) (string, error) {
 			lines = append(lines, k.Service+"\t"+k.Dst+"\t"+mode+"\t"+ifm)
 		}
 		return strings.Join(lines, "\n"), nil
+	case "plugins.marketplaces":
+		if m.Plugins == nil {
+			return "", nil
+		}
+		return strings.Join(m.Plugins.Marketplaces, "\n"), nil
+	case "plugins.install":
+		if m.Plugins == nil {
+			return "", nil
+		}
+		return strings.Join(m.Plugins.Install, "\n"), nil
 	}
 	return "", fmt.Errorf("unknown field %q", name)
 }

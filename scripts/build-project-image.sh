@@ -372,6 +372,55 @@ RUN bash /tmp/agent-install.sh && rm /tmp/agent-install.sh
 USER root
 EOF
 
+# Plugin install (manifest's plugins.marketplaces + plugins.install).
+# Runs after install.sh as $RP_USER with a staging HOME so the plugin
+# tree doesn't pollute the image's /home/<user>; we copy the result
+# into the seed location for any volume that mounts at .claude/.
+# Skipped entirely when plugins.install is empty. See ADR-0016.
+PLUGIN_MARKETPLACES=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field plugins.marketplaces 2>/dev/null || true)
+PLUGIN_INSTALL=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field plugins.install 2>/dev/null || true)
+
+if [ -n "$PLUGIN_INSTALL" ]; then
+    # Find the volume (if any) whose mount path covers /home/<user>/.claude/.
+    # The plugin tree lives at <staging>/.claude/plugins; we want it under
+    # the .claude volume's seed dir. If no volume covers .claude, the
+    # plugins land directly under /home/<user>/.claude in the image
+    # (lost on volume mount at runtime; we error out below).
+    plugin_seed_pair=$(volume_seed_target "/home/$RP_USER/.claude")
+    if [ -z "$plugin_seed_pair" ]; then
+        echo "build-project-image: plugins.install requires a volume covering /home/$RP_USER/.claude (claude-code's claude-home volume by default). Skipping plugin install." >&2
+    else
+        plugin_seed_path=${plugin_seed_pair%%$'\t'*}
+        plugin_vol_name=${plugin_seed_pair##*$'\t'}
+        # Emit one RUN step that registers each marketplace + installs
+        # each plugin into a staging HOME, then COPYs the resulting
+        # plugins tree into the volume's seed dir.
+        cat <<EOF
+
+# --- Plugin install for volume $plugin_vol_name ---
+USER $RP_USER
+RUN set -e \\
+    && export HOME=/tmp/rp-plugin-stage \\
+    && mkdir -p \$HOME/.claude \\
+EOF
+        while IFS= read -r mref; do
+            [ -z "$mref" ] && continue
+            printf '    && claude plugin marketplace add %q \\\n' "$mref"
+        done <<<"$PLUGIN_MARKETPLACES"
+        while IFS= read -r pref; do
+            [ -z "$pref" ] && continue
+            printf '    && claude plugin install %q \\\n' "$pref"
+        done <<<"$PLUGIN_INSTALL"
+        cat <<EOF
+    && true
+USER root
+RUN mkdir -p $plugin_seed_path \\
+    && cp -aR /tmp/rp-plugin-stage/.claude/. $plugin_seed_path/ \\
+    && rm -rf /tmp/rp-plugin-stage
+EOF
+    fi
+fi
+
 if [ -n "$INSTRUCTIONS_DST" ]; then
     expanded_inst=$(expand_user_template "$INSTRUCTIONS_DST")
     seed_pair=$(volume_seed_target "$expanded_inst")

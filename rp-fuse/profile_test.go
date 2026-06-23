@@ -495,3 +495,50 @@ host_keychain:
 		t.Errorf("host_keychain accessor = %q (expected defaults mode=0600 if_missing=skip)", got)
 	}
 }
+
+func TestProfileManifest_PluginsParse(t *testing.T) {
+	m, err := parseProfileManifestBytes([]byte(`name: foo
+plugins:
+  marketplaces:
+    - jarrodwatts/claude-hud
+  install:
+    - claude-hud@jarrodwatts-claude-hud
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Plugins == nil || len(m.Plugins.Marketplaces) != 1 || len(m.Plugins.Install) != 1 {
+		t.Fatalf("plugins = %+v", m.Plugins)
+	}
+}
+
+func TestProfileManifest_PluginsRejectInjection(t *testing.T) {
+	for _, body := range []string{
+		"name: foo\nplugins:\n  marketplaces:\n    - 'evil; rm -rf /'\n",
+		"name: foo\nplugins:\n  install:\n    - \"foo|bar\"\n",
+		"name: foo\nplugins:\n  marketplaces:\n    - ../escape\n",
+	} {
+		if _, err := parseProfileManifestBytes([]byte(body)); err == nil {
+			t.Errorf("expected error parsing %q", body)
+		}
+	}
+}
+
+func TestProfileManifest_PluginsFieldAccessor(t *testing.T) {
+	m, _ := parseProfileManifestBytes([]byte(`name: foo
+plugins:
+  marketplaces:
+    - a/b
+    - c/d
+  install:
+    - x@a-b
+`))
+	got, _ := profileManifestField(m, "plugins.marketplaces")
+	if got != "a/b\nc/d" {
+		t.Errorf("marketplaces accessor = %q", got)
+	}
+	got, _ = profileManifestField(m, "plugins.install")
+	if got != "x@a-b" {
+		t.Errorf("install accessor = %q", got)
+	}
+}

@@ -31,6 +31,25 @@ type ProfileManifest struct {
 	Volumes         []ProfileVolume    `yaml:"volumes,omitempty"`
 	HostFiles       []HostFile         `yaml:"host_files,omitempty"`
 	HostKeychain    []KeychainImport   `yaml:"host_keychain,omitempty"`
+	Plugins         *PluginSpec        `yaml:"plugins,omitempty"`
+}
+
+// PluginSpec declares which marketplaces to register + which plugins to
+// install at image build time. Two sublists kept explicit because
+// `claude plugin install <name>@<marketplace>` requires the marketplace
+// to be registered first. The build runs `claude plugin marketplace add`
+// for each marketplace then `claude plugin install` for each install
+// entry, in order, against a staging $HOME; the resulting
+// .claude/plugins tree is copied into the claude-home volume's seed
+// location so first container start sees the plugins.
+//
+// Re-installs require destroying the per-container volume backing
+// (rp purge or manually clearing $RP_VOLUMES_DIR/<container>/claude-home/);
+// the init-time seed merge only ADDS missing files, it doesn't refresh
+// existing ones. See ADR-0016.
+type PluginSpec struct {
+	Marketplaces []string `yaml:"marketplaces,omitempty"`
+	Install      []string `yaml:"install,omitempty"`
 }
 
 // HostFile declares a file/dir on the host to be copied into the container at
@@ -221,6 +240,18 @@ func (m *ProfileManifest) Validate() error {
 			return fmt.Errorf("manifest: host_keychain[%d].if_missing: %w", i, err)
 		}
 	}
+	if m.Plugins != nil {
+		for i, mref := range m.Plugins.Marketplaces {
+			if err := validatePluginRef(mref); err != nil {
+				return fmt.Errorf("manifest: plugins.marketplaces[%d]: %w", i, err)
+			}
+		}
+		for i, ins := range m.Plugins.Install {
+			if err := validatePluginRef(ins); err != nil {
+				return fmt.Errorf("manifest: plugins.install[%d]: %w", i, err)
+			}
+		}
+	}
 	volNames := map[string]int{}
 	for i, v := range m.Volumes {
 		if v.Name == "" {
@@ -264,6 +295,25 @@ func (m *ProfileManifest) Validate() error {
 		if strings.Contains(ep, "..") {
 			return fmt.Errorf("manifest: entrypoints.%s %q must not contain `..`", kind, ep)
 		}
+	}
+	return nil
+}
+
+// validatePluginRef accepts a non-empty string with no shell-meta or
+// path-traversal characters. Used for both marketplace refs (e.g.
+// "jarrodwatts/claude-hud" or a https URL) and plugin install ids
+// (e.g. "claude-hud@jarrodwatts-claude-hud"). The downstream
+// `claude plugin marketplace add` / `claude plugin install` will fail
+// loudly on actual bad refs; this catches obvious injection attempts.
+func validatePluginRef(s string) error {
+	if s == "" {
+		return errors.New("empty")
+	}
+	if strings.ContainsAny(s, "\n\r\t;|&$`<>\\") {
+		return fmt.Errorf("invalid character in plugin ref %q", s)
+	}
+	if strings.Contains(s, "..") {
+		return fmt.Errorf("plugin ref %q must not contain `..`", s)
 	}
 	return nil
 }

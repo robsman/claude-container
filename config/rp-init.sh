@@ -375,6 +375,37 @@ if [ -n "${RP_VOLUMES:-}" ] && [ -n "${RP_USER:-}" ]; then
     done
 fi
 
+# host_path_aliases: per-path symlinks (host_path → container_path).
+# RP_PATH_ALIASES is comma-separated `host:container` pairs from
+# resolve-create-args.sh. Each is created as a symlink so host-absolute
+# references baked into settings.json / hooks resolve through.
+# Idempotent: skip if the host path already exists.
+if [ -n "${RP_PATH_ALIASES:-}" ]; then
+    IFS=',' read -ra _aliases <<<"$RP_PATH_ALIASES"
+    for spec in "${_aliases[@]}"; do
+        host_path=${spec%%:*}
+        cont_path=${spec#*:}
+        [ -z "$host_path" ] || [ -z "$cont_path" ] && continue
+        if [ "$host_path" = "$cont_path" ]; then
+            continue
+        fi
+        if [ -e "$host_path" ] || [ -L "$host_path" ]; then
+            echo "rp-init: $host_path already exists (alias skipped)" >&2
+            continue
+        fi
+        mkdir -p "$(dirname "$host_path")"
+        # The target dir is created if missing so the symlink resolves
+        # immediately (claude reads the link target and fails if it doesn't
+        # exist yet). Owner = RP_USER so the agent can write into it.
+        if [ ! -e "$cont_path" ]; then
+            mkdir -p "$cont_path"
+            chown "$RP_USER:$RP_USER" "$cont_path" 2>/dev/null || true
+        fi
+        ln -s "$cont_path" "$host_path"
+        echo "rp-init: aliased $host_path → $cont_path" >&2
+    done
+fi
+
 CACHE_FLAG=""
 if [ -n "${RP_CACHE:-}" ]; then
     CACHE_FLAG="--cache $RP_CACHE"

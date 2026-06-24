@@ -43,6 +43,36 @@ if [ -x "$RP_FUSE" ] && [ -f "$CONFIG" ]; then
     fi
 fi
 
+# host_path_aliases: each entry is `~/sub/path` on the host. Expand ~ to
+# host's $HOME and compute the container-side target as /home/<user>/<sub/path>.
+# Forward as comma-separated `host:container` pairs; rp-init.sh creates
+# each symlink inside the container.
+if [ -x "$RP_FUSE" ] && [ -n "${HOME:-}" ]; then
+    aliases=$("$RP_FUSE" config --file "$CONFIG" field host_path_aliases 2>/dev/null || true)
+    if [ -n "$aliases" ]; then
+        # User from earlier in this script: $RP_USER_VAL.
+        joined=""
+        while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            # Strip leading ~ and the optional /.
+            rel=${entry#\~}
+            rel=${rel#/}
+            host_path="$HOME"
+            [ -n "$rel" ] && host_path="$HOME/$rel"
+            user_for_path=${RP_USER_VAL:-coder}
+            cont_path="/home/${user_for_path}"
+            [ -n "$rel" ] && cont_path="/home/${user_for_path}/$rel"
+            if [ -n "$joined" ]; then
+                joined="${joined},"
+            fi
+            joined="${joined}${host_path}:${cont_path}"
+        done <<<"$aliases"
+        if [ -n "$joined" ]; then
+            CONTAINER_ENV="$CONTAINER_ENV -e RP_PATH_ALIASES=$joined"
+        fi
+    fi
+fi
+
 # Host aliases (`host_aliases:` in config + the always-on
 # `host.containers.internal`). Apple Container has no `--add-host`
 # equivalent, so we forward the list as RP_HOST_ALIASES and let

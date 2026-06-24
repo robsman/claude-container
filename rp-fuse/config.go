@@ -57,6 +57,18 @@ type ProjectConfig struct {
 	// HostAliasesEffective); the user can opt out by listing it with a
 	// negation (`!host.containers.internal`) — TBD.
 	HostAliases []HostAlias `yaml:"host_aliases,omitempty"`
+	// HostPathAliases: list of host paths to symlink inside the container.
+	// Each entry must start with `~/` (expanded to host's $HOME at rp
+	// create time). Container target is computed by substituting $HOME →
+	// /home/<container-user>. Lets host-absolute paths baked into
+	// settings.json / hooks resolve inside without colliding with any
+	// 1:1 workspace bind (a whole-home alias would).
+	//
+	// Example:
+	//   host_path_aliases:
+	//     - ~/.claude            # host $HOME/.claude → /home/<user>/.claude
+	//     - ~/.config/zsh        # host $HOME/.config/zsh → /home/<user>/.config/zsh
+	HostPathAliases []string `yaml:"host_path_aliases,omitempty"`
 }
 
 // HostAlias is one entry under host_aliases. Accepts both the short
@@ -254,6 +266,17 @@ func (c *ProjectConfig) Validate() error {
 			if err := validatePluginRef(ins); err != nil {
 				return fmt.Errorf("config: plugins.install[%d]: %w", i, err)
 			}
+		}
+	}
+	for i, p := range c.HostPathAliases {
+		if p == "" {
+			return fmt.Errorf("config: host_path_aliases[%d]: empty entry", i)
+		}
+		if !strings.HasPrefix(p, "~/") && p != "~" {
+			return fmt.Errorf("config: host_path_aliases[%d] %q: must start with `~/` (paths relative to host $HOME)", i, p)
+		}
+		if strings.Contains(p, "..") {
+			return fmt.Errorf("config: host_path_aliases[%d] %q: must not contain `..`", i, p)
 		}
 	}
 	for i, a := range c.HostAliases {

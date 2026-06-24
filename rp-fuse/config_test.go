@@ -424,3 +424,35 @@ func TestProjectConfig_HostFilesFieldAccessor(t *testing.T) {
 		t.Errorf("host_files accessor = %q", got)
 	}
 }
+
+func TestParseProjectConfig_HostPathAliasesParse(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("host_path_aliases:\n  - ~/.claude\n  - ~/.config/zsh\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostPathAliases) != 2 {
+		t.Fatalf("HostPathAliases = %v", cfg.HostPathAliases)
+	}
+}
+
+func TestParseProjectConfig_HostPathAliasesRejectAbsolute(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("host_path_aliases:\n  - /Users/me/.claude\n"))
+	if err == nil {
+		t.Error("expected error on non-~ host_path_aliases entry")
+	}
+}
+
+func TestParseProjectConfig_HostPathAliasesRejectDotDot(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("host_path_aliases:\n  - ~/../escape\n"))
+	if err == nil {
+		t.Error("expected error on .. in host_path_aliases")
+	}
+}
+
+func TestProjectConfig_HostPathAliasesFieldAccessor(t *testing.T) {
+	cfg, _ := parseProjectConfigBytes([]byte("host_path_aliases:\n  - ~/.claude\n  - ~/.config\n"))
+	got, _ := projectConfigField(cfg, "host_path_aliases")
+	if got != "~/.claude\n~/.config" {
+		t.Errorf("host_path_aliases accessor = %q", got)
+	}
+}

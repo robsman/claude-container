@@ -186,6 +186,10 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "", nil
 		}
 		return strings.Join(c.Plugins.Install, "\n"), nil
+	case "host_path_aliases":
+		// One ~/-prefixed entry per line. Caller expands ~ → host's
+		// $HOME and computes the container target via /home/<user>/<rel>.
+		return strings.Join(c.HostPathAliases, "\n"), nil
 	case "host_aliases":
 		// One alias per line: "name=ip". Always includes the implicit
 		// `host.containers.internal=host-gateway` entry. Shell consumers

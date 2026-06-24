@@ -162,6 +162,26 @@
 #     dst: /home/{{user}}/.claude/.credentials.json
 #     mode: "0600"
 
+# ── Host path aliases ────────────────────────────────────────────
+# Per-path symlinks inside the container so host-absolute references
+# in settings.json / hooks / IDE config resolve transparently. Each
+# entry starts with `~/`; rp expands it to the host's $HOME and
+# creates a symlink at that path inside the container pointing at
+# /home/<container-user>/<rel>.
+#
+# Use this when settings.json hardcodes `/Users/me/.claude/hooks/x.js`
+# — alias `~/.claude` and the path resolves to /home/<user>/.claude/hooks/x.js
+# via the symlink. Pair with a host_files entry that pulls the actual
+# hook scripts into /home/{{user}}/.claude/hooks/.
+#
+# Don't whole-home alias (`~`) when any workspace is bound at a path
+# under your $HOME — the alias would collide with the workspace bind.
+# Fine-grained per-subpath aliases sidestep that.
+#
+# host_path_aliases:
+#   - ~/.claude
+#   - ~/.config/zsh
+
 # ── Host aliases ──────────────────────────────────────────────────
 # Inject /etc/hosts entries inside the container so processes can resolve
 # well-known names. `host.containers.internal` → the host's gateway IP

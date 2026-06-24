@@ -456,3 +456,81 @@ func TestProjectConfig_HostPathAliasesFieldAccessor(t *testing.T) {
 		t.Errorf("host_path_aliases accessor = %q", got)
 	}
 }
+
+func TestParseProjectConfig_LocalMerge_ListsAppend(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`host_path_aliases:
+  - ~/.claude
+plugins:
+  install:
+    - shared@market
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.local.yaml"), []byte(`host_path_aliases:
+  - ~/.zshrc
+plugins:
+  install:
+    - personal@market
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseProjectConfig(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostPathAliases) != 2 {
+		t.Errorf("host_path_aliases = %v, want 2 entries appended", cfg.HostPathAliases)
+	}
+	if len(cfg.Plugins.Install) != 2 {
+		t.Errorf("plugins.install = %v, want 2 entries appended", cfg.Plugins.Install)
+	}
+}
+
+func TestParseProjectConfig_LocalMerge_ScalarsOverride(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`image: shared-image
+user: coder
+resources:
+  memory: 4G
+  cpus: 2
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.local.yaml"), []byte(`image: my-image
+resources:
+  memory: 8G
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseProjectConfig(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Image != "my-image" {
+		t.Errorf("image = %q, want my-image (local wins)", cfg.Image)
+	}
+	if cfg.User != "coder" {
+		t.Errorf("user = %q, want coder (preserved from base)", cfg.User)
+	}
+	if cfg.Resources.Memory != "8G" {
+		t.Errorf("memory = %q, want 8G (local wins)", cfg.Resources.Memory)
+	}
+	if cfg.Resources.CPUs != 2 {
+		t.Errorf("cpus = %d, want 2 (preserved from base)", cfg.Resources.CPUs)
+	}
+}
+
+func TestParseProjectConfig_LocalMerge_NoLocalNoChange(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("image: foo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseProjectConfig(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Image != "foo" {
+		t.Errorf("image = %q, want foo", cfg.Image)
+	}
+}

@@ -158,9 +158,34 @@ type FuseSpec struct {
 	Cache *float64 `yaml:"cache,omitempty"`
 }
 
-// ParseProjectConfig reads and validates .rp/config.yaml. A missing file
-// yields an empty *ProjectConfig and no error.
+// ParseProjectConfig reads and validates .rp/config.yaml AND, if it
+// exists, the sibling .rp/config.local.yaml. The latter overrides /
+// extends the former so developers can drop personal additions
+// (plugins, host_files, path aliases, etc.) without churning the
+// shared, committed config.yaml. Merge rules — see ProjectConfig.Merge.
+//
+// A missing config.yaml yields an empty *ProjectConfig and no error;
+// a missing config.local.yaml is silently skipped.
 func ParseProjectConfig(path string) (*ProjectConfig, error) {
+	base, err := parseSingleConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	localPath := filepath.Join(filepath.Dir(path), "config.local.yaml")
+	if _, err := os.Stat(localPath); err == nil {
+		local, err := parseSingleConfig(localPath)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", localPath, err)
+		}
+		base.Merge(local)
+		if err := base.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	return base, nil
+}
+
+func parseSingleConfig(path string) (*ProjectConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -169,6 +194,64 @@ func ParseProjectConfig(path string) (*ProjectConfig, error) {
 		return nil, err
 	}
 	return parseProjectConfigBytes(data)
+}
+
+// Merge layers `other` (typically config.local.yaml) on top of c
+// (config.yaml). Scalars in `other` override; lists append; maps
+// (Resources, Fuse, Plugins) deep-merge per-field. After Merge the
+// caller should re-Validate the result.
+func (c *ProjectConfig) Merge(other *ProjectConfig) {
+	if other == nil {
+		return
+	}
+	// Scalars: override when set.
+	if other.Agent != "" {
+		c.Agent = other.Agent
+	}
+	if other.Image != "" {
+		c.Image = other.Image
+	}
+	if other.User != "" {
+		c.User = other.User
+	}
+	if other.StripSudo {
+		c.StripSudo = true
+	}
+	if other.Build != nil {
+		c.Build = other.Build
+	}
+	// Maps: deep-merge per-field.
+	if other.Resources != nil {
+		if c.Resources == nil {
+			c.Resources = &ResourceSpec{}
+		}
+		if other.Resources.Memory != "" {
+			c.Resources.Memory = other.Resources.Memory
+		}
+		if other.Resources.CPUs != 0 {
+			c.Resources.CPUs = other.Resources.CPUs
+		}
+	}
+	if other.Fuse != nil {
+		if c.Fuse == nil {
+			c.Fuse = &FuseSpec{}
+		}
+		if other.Fuse.Cache != nil {
+			c.Fuse.Cache = other.Fuse.Cache
+		}
+	}
+	if other.Plugins != nil {
+		if c.Plugins == nil {
+			c.Plugins = &PluginSpec{}
+		}
+		c.Plugins.Marketplaces = append(c.Plugins.Marketplaces, other.Plugins.Marketplaces...)
+		c.Plugins.Install = append(c.Plugins.Install, other.Plugins.Install...)
+	}
+	// Lists: append.
+	c.HostFiles = append(c.HostFiles, other.HostFiles...)
+	c.HostKeychain = append(c.HostKeychain, other.HostKeychain...)
+	c.HostAliases = append(c.HostAliases, other.HostAliases...)
+	c.HostPathAliases = append(c.HostPathAliases, other.HostPathAliases...)
 }
 
 func parseProjectConfigBytes(data []byte) (*ProjectConfig, error) {

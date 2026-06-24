@@ -1,0 +1,3 @@
+# Per-developer overrides — not for commit. Layered on top of
+# config.yaml at parse time by rp-fuse. See ADR-0017 for merge rules.
+config.local.yaml

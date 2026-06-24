@@ -7,6 +7,18 @@
 # the full design.
 #
 # Pick ONE of `image:` or `build:`. Setting both is a config error.
+#
+# ── Per-developer overrides (config.local.yaml) ───────────────────
+# rp also reads `.rp/config.local.yaml` if present, with the same
+# schema as config.yaml. Merge rules:
+#   - scalars (image, user, agent, strip_sudo, fuse.cache) → local wins
+#   - lists  (host_files, host_keychain, host_aliases,
+#            host_path_aliases, plugins.marketplaces, plugins.install) → APPEND
+#   - maps   (resources, fuse) → deep merge per-field
+#
+# config.local.yaml is meant for personal additions (extra plugins,
+# host imports, path aliases). `.rp/.gitignore` ships in the
+# template so it stays out of the repo by default.
 
 # ── Agent profile ──────────────────────────────────────────────────
 # Which coding agent the container runs. Defaults to claude-code. Looked up

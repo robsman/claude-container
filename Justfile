@@ -96,6 +96,20 @@ service-stop:
 service-status:
     container system status
 
+# Internal: bring the Apple Container apiserver up if it's down. After a host
+# reboot the launchd agent sometimes fails to relaunch, leaving every
+# `container` call to die with a cryptic XPC "Connection invalid" error — and
+# worse, `_ensure` reads the empty `container list` as "container gone" and
+# tries to rebuild it. `container system status` exits non-zero only when the
+# apiserver is down; `container system start` is a no-op once it is up.
+_service-ensure:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! container system status >/dev/null 2>&1; then
+        echo "rp: Apple Container service is down — starting it (container system start)" >&2
+        container system start
+    fi
+
 # Ensure the builder VM is running (no-op if already up; use builder-reset to resize)
 builder-ensure:
     #!/usr/bin/env bash
@@ -331,7 +345,7 @@ init *FLAGS:
 # called via `just` directly), else verify its recorded host_path label
 # matches the primary workspace path. Then ensure it is running. Called
 # as a dependency by interactive recipes.
-_ensure:
+_ensure: _service-ensure
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
@@ -421,7 +435,7 @@ _ensure:
 # Create a new container with one or more workspaces bound 1:1 (host path
 # = container path). The rp wrapper translates CLI positional paths +
 # --name into RP_NAME / RP_PATHS_RAW env vars consumed here. See ADR-0010.
-create:
+create: _service-ensure
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"
@@ -481,7 +495,7 @@ create:
     echo "Container $CONT_NAME created. Workspaces: $RP_WORKSPACE_ENV (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
 
 # Start a stopped container
-start:
+start: _service-ensure
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$( {{justfile_directory()}}/scripts/resolve-recipe-ctx.sh "{{host_dir}}" )"

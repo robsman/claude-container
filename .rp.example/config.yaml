@@ -96,12 +96,20 @@
 # seed copy. Removing a plugin from this list does NOT remove it from
 # already-seeded volumes — use `rp purge` for a clean slate.
 #
+# IMPORTANT: the marketplace NAME in the install entry is the name the
+# marketplace declares for itself (in its marketplace.json), NOT the
+# github repo path. For jarrodwatts/claude-hud the marketplace declares
+# itself as `claude-hud`, so the install ref is `claude-hud@claude-hud`,
+# not `claude-hud@jarrodwatts-claude-hud`. Find the right name by
+# running `claude plugin marketplace list` after `add` (or read the
+# repo's marketplace.json).
+#
 # plugins:
 #   marketplaces:
 #     - jarrodwatts/claude-hud         # github user/repo short form
 #     # - https://example.com/my-marketplace.git
 #   install:
-#     - claude-hud@jarrodwatts-claude-hud
+#     - claude-hud@claude-hud          # <plugin-name>@<marketplace-self-name>
 
 # ── Host aliases ──────────────────────────────────────────────────
 # Inject /etc/hosts entries inside the container so processes can resolve

@@ -304,7 +304,7 @@ RUN mkdir -p /var/lib/rp/shadow /usr/local/lib/rp \\
     && chown root:root /var/lib/rp /var/lib/rp/shadow
 
 # Pull rp-fuse + init script + setuid bootstrap + tini + container-fundamentals
-# fragment from rp-base. The unified ENTRYPOINT is `tini -- rp-init-bootstrap`
+# fragment from rp-base. The unified ENTRYPOINT is \`tini -- rp-init-bootstrap\`
 # (ADR-0010); we COPY tini explicitly so the overlay works on user-supplied
 # bases that don't ship tini. Re-apply the setuid bit because COPY --from can
 # strip it on some Docker variants.

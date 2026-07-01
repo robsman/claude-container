@@ -534,3 +534,26 @@ func TestParseProjectConfig_LocalMerge_NoLocalNoChange(t *testing.T) {
 		t.Errorf("image = %q, want foo", cfg.Image)
 	}
 }
+
+func TestParseProjectConfig_AllowSudoParse(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("allow_sudo: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AllowSudo {
+		t.Errorf("AllowSudo = false, want true")
+	}
+}
+
+func TestProjectConfig_AllowSudoFieldAccessor(t *testing.T) {
+	cfg, _ := parseProjectConfigBytes([]byte("allow_sudo: true\n"))
+	got, _ := projectConfigField(cfg, "allow_sudo")
+	if got != "true" {
+		t.Errorf("allow_sudo accessor = %q", got)
+	}
+	cfg, _ = parseProjectConfigBytes([]byte(""))
+	got, _ = projectConfigField(cfg, "allow_sudo")
+	if got != "" {
+		t.Errorf("empty allow_sudo accessor = %q, want empty", got)
+	}
+}

@@ -114,6 +114,11 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "true", nil
 		}
 		return "", nil
+	case "allow_sudo":
+		if c.AllowSudo {
+			return "true", nil
+		}
+		return "", nil
 	case "dockerfile":
 		if c.Build == nil {
 			return "", nil

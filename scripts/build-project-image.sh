@@ -59,6 +59,7 @@ AGENT=$("$RP_FUSE" config --file "$CONFIG" field agent 2>/dev/null || echo "clau
 RP_USER_CFG=$("$RP_FUSE" config --file "$CONFIG" field user 2>/dev/null || echo "")
 RP_USER=${RP_USER_CFG:-coder}
 STRIP_SUDO=$("$RP_FUSE" config --file "$CONFIG" field strip_sudo 2>/dev/null || echo "")
+ALLOW_SUDO=$("$RP_FUSE" config --file "$CONFIG" field allow_sudo 2>/dev/null || echo "")
 
 # Resolve the agent profile dir (workspace override > builtin).
 PROFILE_DIR=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" resolve)
@@ -295,7 +296,14 @@ RUN gpasswd -d ${RP_USER} wheel 2>/dev/null || true
 EOF
 fi
 
-cat <<EOF
+if [ "$ALLOW_SUDO" = "true" ]; then
+    cat <<EOF
+# allow_sudo: opt-in. The configured user keeps its sudoers entries;
+# the shadow boundary is weakened (agent can \`sudo\` to root inside).
+# Skipping the no-sudo refusal check. See ADR-0018.
+EOF
+else
+    cat <<EOF
 # Refuse if the configured user has any sudoers entry. Strip comments
 # before matching so legitimate base-image comments like
 # '# Ditto for GPG agent' in /etc/sudoers don't false-positive when the
@@ -304,7 +312,10 @@ RUN if cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | sed 's/#.*//' \\
         | grep -qE "(^|[[:space:]])${RP_USER}([[:space:]]|\$)"; then \\
         echo "rp-overlay: user '$RP_USER' has a sudoers entry, refusing" >&2; exit 1; \\
     fi
+EOF
+fi
 
+cat <<EOF
 # Mount points for the shadow boundary + agent entrypoint dir. No
 # fixed workspace path: with 1:1 binds, the workspace is the host path
 # (see ADR-0010 workspace-discovery section).

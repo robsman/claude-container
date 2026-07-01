@@ -71,6 +71,21 @@
 # user: node
 # strip_sudo: true
 
+# ── allow_sudo (weakens shadow boundary; use with care) ───────────
+# Default false: build refuses users with sudoers entries. Set
+# allow_sudo: true to KEEP the sudo grant — the container user can
+# `sudo` to root inside. This is the "devcontainer ergonomic" mode:
+# `sudo apt-get install` etc. works. Cost: the shadow boundary is
+# weakened; agent can `sudo umount` the FUSE overlay. Only appropriate
+# for single-tenant hosts running trusted code.
+#
+# Skips both the build-time refusal and the runtime rp-init.sh check
+# (equivalent to setting RP_ALLOW_SUDO=1). See ADR-0018.
+#
+# image: mcr.microsoft.com/devcontainers/javascript-node:22
+# user: node
+# allow_sudo: true
+
 # ── Container resources ────────────────────────────────────────────
 # Forwarded to `container create` as --memory / --cpus. Missing keys =
 # Apple Container's default of 1G per container — too low for `npm install`

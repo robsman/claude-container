@@ -32,6 +32,16 @@ type ProjectConfig struct {
 	// this true to keep an image's conventional user (e.g. `node` on the
 	// devcontainer javascript-node:22 image) while removing its sudo grant.
 	StripSudo bool          `yaml:"strip_sudo,omitempty"`
+	// AllowSudo (default false) bypasses the shadow-boundary invariant
+	// that the container user must NOT be in sudoers. When true, both
+	// the overlay build and rp-init.sh skip the "no sudo" refusal.
+	// The container user can then `sudo` to root inside the container;
+	// the shadow boundary is weakened accordingly (agent can
+	// `sudo umount` the FUSE layer). Use when you want a devcontainer-
+	// style ergonomic user and trust the outer boundary (single-tenant
+	// Mac, no untrusted code); prefer strip_sudo: true or a
+	// sudo-free user for stricter setups. See ADR-0018.
+	AllowSudo bool `yaml:"allow_sudo,omitempty"`
 	Resources *ResourceSpec `yaml:"resources,omitempty"`
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
 	// Plugins extends the agent profile's plugin set (manifest's
@@ -216,6 +226,9 @@ func (c *ProjectConfig) Merge(other *ProjectConfig) {
 	}
 	if other.StripSudo {
 		c.StripSudo = true
+	}
+	if other.AllowSudo {
+		c.AllowSudo = true
 	}
 	if other.Build != nil {
 		c.Build = other.Build

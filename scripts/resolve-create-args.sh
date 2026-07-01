@@ -107,6 +107,16 @@ if [ -x "$RP_FUSE" ]; then
     CONTAINER_ENV="$CONTAINER_ENV -e RP_USER=$RP_USER_VAL"
 fi
 
+# allow_sudo (per-workspace opt-in). Bypasses the runtime "no sudo"
+# refusal in rp-init.sh, matching the build-time skip in
+# build-project-image.sh when the same field is set. See ADR-0018.
+if [ -x "$RP_FUSE" ]; then
+    allow_sudo=$("$RP_FUSE" config --file "$CONFIG" field allow_sudo 2>/dev/null || true)
+    if [ "$allow_sudo" = "true" ]; then
+        CONTAINER_ENV="$CONTAINER_ENV -e RP_ALLOW_SUDO=1"
+    fi
+fi
+
 # Forward RP_DEBUG if set in the host shell. Lets the user diagnose a
 # specific session without baking debug into config: `RP_DEBUG=1 rp run`.
 if [ "${RP_DEBUG:-}" = "1" ]; then

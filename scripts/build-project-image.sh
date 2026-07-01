@@ -35,6 +35,15 @@ fi
 WORKSPACE=$1
 CONT_NAME=$2
 
+# Tag of the rp-base image the overlay COPYs its runtime bits (rp-fuse,
+# rp-init.sh, tini, …) from. The Justfile pins this to the same
+# `image_tag` it pulled/built rp-base under (a real release tag for a
+# brew install, `latest` for a source checkout). We reference the tag
+# EXPLICITLY rather than bare `rp-base` (which resolves to `:latest`) so
+# a stale locally-built `rp-base:latest` can't shadow the pinned base
+# and poison the overlay with an out-of-date rp-init.sh.
+RP_BASE_TAG="${RP_BASE_TAG:-latest}"
+
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 RP_FUSE="$REPO_DIR/rp-fuse/rp-fuse-darwin-arm64"
 if [ ! -x "$RP_FUSE" ]; then
@@ -304,15 +313,17 @@ RUN mkdir -p /var/lib/rp/shadow /usr/local/lib/rp \\
     && chown root:root /var/lib/rp /var/lib/rp/shadow
 
 # Pull rp-fuse + init script + setuid bootstrap + tini + container-fundamentals
-# fragment from rp-base. The unified ENTRYPOINT is `tini -- rp-init-bootstrap`
+# fragment from rp-base:\${RP_BASE_TAG} (pinned above — never bare rp-base,
+# which would resolve to a possibly-stale local :latest). The unified
+# ENTRYPOINT is \`tini -- rp-init-bootstrap\`
 # (ADR-0010); we COPY tini explicitly so the overlay works on user-supplied
 # bases that don't ship tini. Re-apply the setuid bit because COPY --from can
 # strip it on some Docker variants.
-COPY --from=rp-base /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
-COPY --from=rp-base /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
-COPY --from=rp-base /usr/local/bin/rp-init-bootstrap /usr/local/bin/rp-init-bootstrap
-COPY --from=rp-base /usr/bin/tini /usr/local/bin/tini
-COPY --from=rp-base /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
+COPY --from=rp-base:${RP_BASE_TAG} /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
+COPY --from=rp-base:${RP_BASE_TAG} /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
+COPY --from=rp-base:${RP_BASE_TAG} /usr/local/bin/rp-init-bootstrap /usr/local/bin/rp-init-bootstrap
+COPY --from=rp-base:${RP_BASE_TAG} /usr/bin/tini /usr/local/bin/tini
+COPY --from=rp-base:${RP_BASE_TAG} /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
 RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh /usr/local/bin/tini \\
     && chown root:root /usr/local/bin/rp-init-bootstrap \\
     && chmod 4755 /usr/local/bin/rp-init-bootstrap
@@ -447,7 +458,20 @@ EOF
             [ -z "$pref" ] && continue
             printf '    && claude plugin install %q \\\n' "$pref"
         done <<<"$PLUGIN_INSTALL"
+        # `claude plugin install` installs but leaves plugins DISABLED;
+        # enablement lives in ~/.claude/settings.json's enabledPlugins map.
+        # Enable every installed plugin (the explicit list + any auto-pulled
+        # dependencies) by reading the refs back out of installed_plugins.json
+        # — a dependency left disabled can break the plugin that needs it.
+        #
+        # `claude plugin enable` MERGES into settings.json. The profile's
+        # settings.json (e.g. skipDangerousModePermissionPrompt) was routed to
+        # the volume seed, NOT to \$HOME/.claude, so we copy it into place first
+        # — otherwise enable writes a fresh enabledPlugins-only file and the
+        # cp -aR below would clobber the profile's settings in the seed.
         cat <<EOF
+    && { [ -f "$plugin_seed_path/settings.json" ] && cp "$plugin_seed_path/settings.json" \$HOME/.claude/settings.json || true; } \\
+    && for pref in \$(grep -oE '"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+"' \$HOME/.claude/plugins/installed_plugins.json 2>/dev/null | tr -d '"' | sort -u || true); do claude plugin enable "\$pref" || true; done \\
     && true
 USER root
 RUN mkdir -p $plugin_seed_path \\

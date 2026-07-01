@@ -353,7 +353,7 @@ _ensure: _service-ensure
         # build-project-image.sh overlays rp-bits + the configured agent
         # profile onto the user's chosen base. The image tag is derived
         # from the container name.
-        IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
+        IMAGE_TAG=$( RP_BASE_TAG={{image_tag}} {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
         eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "$WS_PRIMARY" )"
         if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
             echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2
@@ -443,7 +443,7 @@ create: _service-ensure
         echo "Container $CONT_NAME already exists. Use 'rp destroy --name $NAME' first."
         exit 1
     fi
-    IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
+    IMAGE_TAG=$( RP_BASE_TAG={{image_tag}} {{justfile_directory()}}/scripts/build-project-image.sh "$WS_PRIMARY" "$CONT_NAME" )
     eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "$WS_PRIMARY" )"
     if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
         echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2

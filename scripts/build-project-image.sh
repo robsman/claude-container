@@ -458,7 +458,20 @@ EOF
             [ -z "$pref" ] && continue
             printf '    && claude plugin install %q \\\n' "$pref"
         done <<<"$PLUGIN_INSTALL"
+        # `claude plugin install` installs but leaves plugins DISABLED;
+        # enablement lives in ~/.claude/settings.json's enabledPlugins map.
+        # Enable every installed plugin (the explicit list + any auto-pulled
+        # dependencies) by reading the refs back out of installed_plugins.json
+        # — a dependency left disabled can break the plugin that needs it.
+        #
+        # `claude plugin enable` MERGES into settings.json. The profile's
+        # settings.json (e.g. skipDangerousModePermissionPrompt) was routed to
+        # the volume seed, NOT to \$HOME/.claude, so we copy it into place first
+        # — otherwise enable writes a fresh enabledPlugins-only file and the
+        # cp -aR below would clobber the profile's settings in the seed.
         cat <<EOF
+    && { [ -f "$plugin_seed_path/settings.json" ] && cp "$plugin_seed_path/settings.json" \$HOME/.claude/settings.json || true; } \\
+    && for pref in \$(grep -oE '"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+"' \$HOME/.claude/plugins/installed_plugins.json 2>/dev/null | tr -d '"' | sort -u || true); do claude plugin enable "\$pref" || true; done \\
     && true
 USER root
 RUN mkdir -p $plugin_seed_path \\
